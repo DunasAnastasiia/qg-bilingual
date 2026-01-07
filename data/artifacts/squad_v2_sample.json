@@ -1,0 +1,82 @@
+[
+  {
+    "id": "p1_q1",
+    "title": "Sample Article",
+    "context": "Paris is the capital of France and a major European city with art, fashion, and gastronomy. It is known for the Eiffel Tower and the Louvre Museum located in the city center.",
+    "question": "What is the capital of France?",
+    "answers": {"text": ["Paris"], "answer_start": [0]},
+    "is_impossible": false
+  },
+  {
+    "id": "p1_q2",
+    "title": "Sample Article",
+    "context": "Paris is the capital of France and a major European city with art, fashion, and gastronomy. It is known for the Eiffel Tower and the Louvre Museum located in the city center.",
+    "question": "Name a famous museum in Paris.",
+    "answers": {"text": ["the Louvre Museum"], "answer_start": [112]},
+    "is_impossible": false
+  },
+  {
+    "id": "p1_q3",
+    "title": "Sample Article",
+    "context": "Paris is the capital of France and a major European city with art, fashion, and gastronomy. It is known for the Eiffel Tower and the Louvre Museum located in the city center.",
+    "question": "Which tower is Paris known for?",
+    "answers": {"text": ["the Eiffel Tower"], "answer_start": [92]},
+    "is_impossible": false
+  },
+  {
+    "id": "p1_q4",
+    "title": "Sample Article",
+    "context": "Paris is the capital of France and a major European city with art, fashion, and gastronomy. It is known for the Eiffel Tower and the Louvre Museum located in the city center.",
+    "question": "What is the capital of Germany?",
+    "answers": {"text": []},
+    "is_impossible": true
+  },
+  {
+    "id": "p2_q1",
+    "title": "Tech News",
+    "context": "OpenAI develops advanced AI models that assist with various tasks across research and industry. GPT models are widely used for language understanding and generation worldwide.",
+    "question": "Who develops advanced AI models?",
+    "answers": {"text": ["OpenAI"], "answer_start": [0]},
+    "is_impossible": false
+  },
+  {
+    "id": "p2_q2",
+    "title": "Tech News",
+    "context": "OpenAI develops advanced AI models that assist with various tasks across research and industry. GPT models are widely used for language understanding and generation worldwide.",
+    "question": "What are GPT models used for?",
+    "answers": {"text": ["language understanding and generation"], "answer_start": [96]},
+    "is_impossible": false
+  },
+  {
+    "id": "p2_q3",
+    "title": "Tech News",
+    "context": "OpenAI develops advanced AI models that assist with various tasks across research and industry. GPT models are widely used for language understanding and generation worldwide.",
+    "question": "Which models are widely used?",
+    "answers": {"text": ["GPT models"], "answer_start": [75]},
+    "is_impossible": false
+  },
+  {
+    "id": "p3_q1",
+    "title": "Nature",
+    "context": "The Amazon rainforest hosts diverse species of plants and animals across vast regions of South America. It is often called the lungs of the Earth due to its massive oxygen production and climate influence.",
+    "question": "What is the Amazon rainforest often called?",
+    "answers": {"text": ["the lungs of the Earth"], "answer_start": [102]},
+    "is_impossible": false
+  },
+  {
+    "id": "p3_q2",
+    "title": "Nature",
+    "context": "The Amazon rainforest hosts diverse species of plants and animals across vast regions of South America. It is often called the lungs of the Earth due to its massive oxygen production and climate influence.",
+    "question": "What does the Amazon rainforest host?",
+    "answers": {"text": ["diverse species of plants and animals"], "answer_start": [34]},
+    "is_impossible": false
+  },
+  {
+    "id": "p3_q3",
+    "title": "Nature",
+    "context": "The Amazon rainforest hosts diverse species of plants and animals across vast regions of South America. It is often called the lungs of the Earth due to its massive oxygen production and climate influence.",
+    "question": "Is the Amazon rainforest home to animals?",
+    "answers": {"text": []},
+    "is_impossible": true
+  }
+]
