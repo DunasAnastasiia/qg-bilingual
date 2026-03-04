@@ -1,39 +1,61 @@
-model: google/mt5-base
-task:
-  mode: aware
-  lang: ua
+seed: 42
+language: "ua"
+mode: "answer_aware"
+model_name: "google/mt5-base"
+data_dir: "/app/data"
+
 data:
-  train_path: data/artifacts/ua/train.jsonl
-  val_path: data/artifacts/ua/val.jsonl
-train:
-  lr: 3e-5
-  weight_decay: 0.01
-  epochs: 6
-  batch_per_device: 8
-  grad_accum: 4
-  max_input_len: 512
-  max_target_len: 48
-  label_smoothing: 0.1
-  dropout: 0.1
+  train_split: 0.8
+  val_split: 0.1
+  test_split: 0.1
+  train_file: "/app/data/ukrainian_qa.jsonl"
+  val_file: "/app/data/ukrainian_qa.jsonl"
+  min_context_len: 10
+  max_context_len: 512
+  min_question_len: 3
+  max_question_len: 48
+  min_answer_len: 1
+  max_answer_len: 15
+
+training:
+  batch_size: 8
+  gradient_accumulation_steps: 4
+  learning_rate: 3.0e-5
   warmup_ratio: 0.05
+  num_epochs: 6
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  fp16: true
+  label_smoothing: 0.1
   early_stopping_patience: 3
-peft:
-  lora: true
+  save_total_limit: 3
+  output_dir: "/app/checkpoints/mt5_base_ua_aware"
+
+lora:
+  enabled: true
   r: 8
   alpha: 16
-  target_modules: [q, v, o, wi_0, wi_1]
   dropout: 0.1
-amp:
-  precision: bf16
-decoding:
-  strategy: beam
+
+generation:
   num_beams: 6
   length_penalty: 1.1
   no_repeat_ngram_size: 3
-eval:
-  compute: [rouge, bleu]
-  save_metrics_to: runs/mt5_base_aware_ua/metrics_val.json
-  samples_path: runs/mt5_base_aware_ua/samples_val.jsonl
-  qg2qa_save_to: runs/mt5_base_aware_ua/qg2qa_val.json
+  repetition_penalty: 1.1
+  min_new_tokens: 5
+  max_new_tokens: 48
+
 qg2qa:
-  lang: ua
+  qa_ckpt_en: "distilbert-base-uncased-distilled-squad"
+  qa_ckpt_multi: "deepset/xlm-roberta-large-squad2"
+  lang: "ua"
+  f1_thr: 0.8
+  conf_thr: 0.35
+  device: "auto"
+
+evaluation:
+  qa_f1_threshold: 0.8
+  qa_conf_threshold: 0.35
+  metrics:
+    - rouge
+    - bleu
