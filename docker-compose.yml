@@ -1,0 +1,22 @@
+services:
+  trainer:
+    build: .
+    container_name: qg_trainer
+    command: python3 src/train_all_models.py
+    volumes:
+      - ./checkpoints:/app/checkpoints
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./experiments:/app/experiments
+    env_file:
+      - .env
+    environment:
+      - DEVICE=cuda
+      - SEED=42
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
