@@ -3,12 +3,14 @@ import sys
 import os
 from pathlib import Path
 
-# Add project root and src to sys.path before internal imports
-# This ensures imports work regardless of how/where the script is launched
-current_dir = Path(__file__).resolve().parent
-project_root = current_dir.parent
-if str(current_dir) not in sys.path:
-    sys.path.insert(0, str(current_dir))
+# Force the project root and src directory into sys.path before internal imports
+# This ensures internal modules are always discoverable on any environment (local or RunPod)
+current_file = Path(__file__).resolve()
+src_dir = current_file.parent
+project_root = src_dir.parent
+
+if str(src_dir) not in sys.path:
+    sys.path.insert(0, str(src_dir))
 if str(project_root) not in sys.path:
     sys.path.insert(1, str(project_root))
 
