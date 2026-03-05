@@ -1,0 +1,24 @@
+model_name: google/mt5-base
+language: ua
+mode: answer_aware
+tokenizer_name: google/mt5-base
+
+base_config: ../base_config.yaml
+
+dataset:
+  name: ukrainian_qa
+  language: ua
+  unanswerable_ratio: 0.40
+
+training:
+  num_epochs: 8
+  output_dir: ./checkpoints/mt5_base_ua_aware
+
+lora:
+  use_lora: true
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.1
+  target_modules:
+    - q
+    - v

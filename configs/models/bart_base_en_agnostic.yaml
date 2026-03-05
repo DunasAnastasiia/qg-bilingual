@@ -1,0 +1,29 @@
+model_name: facebook/bart-base
+language: en
+mode: answer_agnostic
+tokenizer_name: facebook/bart-base
+
+base_config: ../base_config.yaml
+
+dataset:
+  name: squad_v2
+  language: en
+  unanswerable_ratio: 0.33
+
+training:
+  num_epochs: 5
+  output_dir: ./checkpoints/bart_base_en_agnostic
+
+generation:
+  do_sample: true
+  temperature: 0.8
+  top_p: 0.9
+
+lora:
+  use_lora: true
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.1
+  target_modules:
+    - q_proj
+    - v_proj

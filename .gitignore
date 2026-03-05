@@ -66,7 +66,9 @@ uploads/
 
 # --- ML / LLM / PyTorch specific ---
 # Local datasets
-/data/*
+/data/raw/
+/data/processed/
+/data/squad_v2/
 !/data/scripts/
 !/data/scripts/**
 !/data/artifacts/
@@ -78,12 +80,12 @@ uploads/
 datasets/
 
 # Model weights & checkpoints
-models/
-checkpoints/
-outputs/
-runs/
-wandb/
-mlruns/
+/models/
+/checkpoints/
+/outputs/
+/runs/
+/wandb/
+/mlruns/
 
 # Hugging Face / other caches inside repo
 .cache/
