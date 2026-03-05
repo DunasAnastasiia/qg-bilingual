@@ -1,13 +1,23 @@
+# Standard library imports
 import sys
 import os
+from pathlib import Path
+
+# Add project root and src to sys.path before internal imports
+# This ensures imports work regardless of how/where the script is launched
+current_dir = Path(__file__).resolve().parent
+project_root = current_dir.parent
+if str(current_dir) not in sys.path:
+    sys.path.insert(0, str(current_dir))
+if str(project_root) not in sys.path:
+    sys.path.insert(1, str(project_root))
+
+# Third-party imports
 import torch
 import numpy as np
-from pathlib import Path
 from transformers import Seq2SeqTrainer
 from datasets import DatasetDict
 import wandb
-
-sys.path.append(str(Path(__file__).parent))
 
 from utils.config import Config
 from utils.seed import set_seed
