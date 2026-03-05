@@ -42,14 +42,11 @@ def train_model(model_config: Dict[str, str]) -> bool:
     if 'override_mode' in model_config:
         cmd.extend(['--mode', model_config['override_mode']])
     
-    # Ensure ROOT_DIR and src are in PYTHONPATH so internal imports work
+    # Ensure ROOT_DIR is in PYTHONPATH so internal imports work
     env = os.environ.copy()
-    src_path = str(ROOT_DIR / 'src')
     root_path = str(ROOT_DIR)
     
-    # Adding both to be safe, though root_path should be enough if using 'from src.models...'
-    # but since current code uses 'from models...', src_path is needed.
-    python_path = [src_path, root_path]
+    python_path = [root_path]
     if 'PYTHONPATH' in env:
         python_path.append(env['PYTHONPATH'])
     

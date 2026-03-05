@@ -1,18 +1,12 @@
-# Standard library imports
 import sys
 import os
 from pathlib import Path
 
-# Force the project root and src directory into sys.path before internal imports
-# This ensures internal modules are always discoverable on any environment (local or RunPod)
+# Force the project root into sys.path before internal imports
 current_file = Path(__file__).resolve()
-src_dir = current_file.parent
-project_root = src_dir.parent
-
-if str(src_dir) not in sys.path:
-    sys.path.insert(0, str(src_dir))
+project_root = current_file.parent.parent
 if str(project_root) not in sys.path:
-    sys.path.insert(1, str(project_root))
+    sys.path.insert(0, str(project_root))
 
 # Third-party imports
 import torch
@@ -21,15 +15,15 @@ from transformers import Seq2SeqTrainer
 from datasets import DatasetDict
 import wandb
 
-from utils.config import Config
-from utils.seed import set_seed
-from data.dataset_loader import DatasetLoader
-from data.normalizer import TextNormalizer
-from data.preprocessor import QGPreprocessor
-from models.qg_model import QGModel
-from models.qa_model import QAModel
-from evaluation.metrics import MetricsCalculator
-from evaluation.visualizer import MetricsVisualizer
+from src.utils.config import Config
+from src.utils.seed import set_seed
+from src.data.dataset_loader import DatasetLoader
+from src.data.normalizer import TextNormalizer
+from src.data.preprocessor import QGPreprocessor
+from src.models.qg_model import QGModel
+from src.models.qa_model import QAModel
+from src.evaluation.metrics import MetricsCalculator
+from src.evaluation.visualizer import MetricsVisualizer
 
 def compute_metrics(eval_preds, tokenizer, qa_model, eval_dataset, metrics_calc, config):
     preds, labels = eval_preds
