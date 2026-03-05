@@ -71,6 +71,14 @@ def train(config_path: str, mode_override: str = None):
         for split in dataset.keys()
     })
 
+    # Check if filtering left us with any data
+    for split_name, split_data in dataset.items():
+        if len(split_data) == 0:
+            print(f"ERROR: {split_name} split is empty after filtering!")
+            print(f"Consider relaxing length constraints in config or increasing dataset size.")
+            raise ValueError(f"{split_name} split has no samples after filtering")
+        print(f"{split_name} split: {len(split_data)} samples")
+
     qg_model = QGModel(config['model_name'], config.config, device=config.get('device', 'cuda'))
     preprocessor = QGPreprocessor(
         qg_model.tokenizer, mode=config['mode'],

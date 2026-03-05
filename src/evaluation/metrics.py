@@ -27,10 +27,55 @@ class MetricsCalculator:
 
     def compute_bertscore(self, predictions: List[str], references: List[str], lang: str = 'en') -> Dict:
         try:
-            results = self.bertscore.compute(predictions=predictions, references=references, lang=lang, model_type='microsoft/deberta-xlarge-mnli' if lang == 'en' else 'xlm-roberta-large')
-            return {'bertscore-precision': np.mean(results['precision']), 'bertscore-recall': np.mean(results['recall']), 'bertscore-f1': np.mean(results['f1'])}
+            import torch
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            model_type = 'microsoft/deberta-xlarge-mnli' if lang == 'en' else 'xlm-roberta-large'
+            
+            # Filter empty sequences to avoid issues with some models
+            filtered_preds, filtered_refs = [], []
+            for p, r in zip(predictions, references):
+                if p.strip() and r.strip():
+                    filtered_preds.append(p)
+                    filtered_refs.append(r)
+            
+            if not filtered_preds:
+                return {'bertscore-precision': 0.0, 'bertscore-recall': 0.0, 'bertscore-f1': 0.0}
+
+            results = self.bertscore.compute(
+                predictions=filtered_preds, 
+                references=filtered_refs, 
+                lang=lang, 
+                model_type=model_type,
+                device=device
+            )
+            
+            # Ensure results are numpy arrays or lists before calling mean
+            def to_numpy_list(val):
+                if isinstance(val, (list, tuple)):
+                    return np.array(val)
+                if hasattr(val, 'cpu'): # It's a tensor
+                    return val.detach().cpu().numpy()
+                return val
+
+            precision = to_numpy_list(results['precision'])
+            recall = to_numpy_list(results['recall'])
+            f1 = to_numpy_list(results['f1'])
+            
+            return {
+                'bertscore-precision': float(np.mean(precision)), 
+                'bertscore-recall': float(np.mean(recall)), 
+                'bertscore-f1': float(np.mean(f1))
+            }
         except (OverflowError, Exception) as e:
-            print(f"Warning: BERTScore computation failed: {e}. Skipping BERTScore.")
+            # We don't want to crash the whole training if BERTScore fails
+            # But we should log the issue if it's persistent
+            import traceback
+            traceback_str = traceback.format_exc()
+            print(f"Warning: BERTScore computation failed with error: {e}. Skipping BERTScore.")
+            # Only print traceback if it's a new or critical issue, for now we keep it quiet to not spam logs
+            # unless it's the specific "int too big to convert" error which we want to debug
+            if "int too big to convert" in str(e):
+                print(f"Detailed BERTScore error:\n{traceback_str}")
             return {'bertscore-precision': 0.0, 'bertscore-recall': 0.0, 'bertscore-f1': 0.0}
 
     def compute_qg_qa_metrics(self, predictions: List[str], references: List[str], contexts: List[str], gold_answers: List[str], qa_model, f1_threshold: float = 0.8, conf_threshold: float = 0.35) -> Dict:
