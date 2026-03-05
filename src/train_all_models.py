@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import sys
+import os
 import logging
 import subprocess
 from pathlib import Path
@@ -40,9 +41,18 @@ def train_model(model_config: Dict[str, str]) -> bool:
     cmd = ['python3', 'src/train.py', '--config', str(config_path)]
     if 'override_mode' in model_config:
         cmd.extend(['--mode', model_config['override_mode']])
+    
+    # Ensure src is in PYTHONPATH so internal imports work
+    env = os.environ.copy()
+    src_path = str(ROOT_DIR / 'src')
+    if 'PYTHONPATH' in env:
+        env['PYTHONPATH'] = f"{src_path}{os.pathsep}{env['PYTHONPATH']}"
+    else:
+        env['PYTHONPATH'] = src_path
+
     try:
         logger.info(f"Running command: {' '.join(cmd)}")
-        subprocess.run(cmd, cwd=ROOT_DIR, check=True, capture_output=False, text=True)
+        subprocess.run(cmd, cwd=ROOT_DIR, check=True, capture_output=False, text=True, env=env)
         logger.info(f"Successfully trained {model_name}")
         return True
     except subprocess.CalledProcessError as e:
