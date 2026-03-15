@@ -1,13 +1,40 @@
 services:
-  trainer:
+  # Download demo dataset
+  download-demo:
     build: .
-    container_name: qg_trainer
-    command: python3 src/train_all_models.py
+    container_name: qg_download_demo
+    command: python3 main.py download_demo
+    volumes:
+      - ./data:/app/data
+      - ./checkpoints:/app/checkpoints
+    env_file:
+      - .env
+    profiles:
+      - download
+
+  # Download production dataset
+  download-production:
+    build: .
+    container_name: qg_download_production
+    command: python3 main.py download_production
+    volumes:
+      - ./data:/app/data
+      - ./checkpoints:/app/checkpoints
+    env_file:
+      - .env
+    profiles:
+      - download
+
+  # Train demo model
+  train-demo:
+    build: .
+    container_name: qg_train_demo
+    command: python3 main.py train_demo
     volumes:
       - ./checkpoints:/app/checkpoints
       - ./data:/app/data
       - ./logs:/app/logs
-      - ./experiments:/app/experiments
+      - ./configs:/app/configs
     env_file:
       - .env
     environment:
@@ -20,3 +47,68 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    profiles:
+      - train
+
+  # Train production models
+  train-production:
+    build: .
+    container_name: qg_train_production
+    command: python3 main.py train_production
+    volumes:
+      - ./checkpoints:/app/checkpoints
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./configs:/app/configs
+    env_file:
+      - .env
+    environment:
+      - DEVICE=cuda
+      - SEED=42
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    profiles:
+      - train
+
+  # Run UI
+  ui:
+    build: .
+    container_name: qg_ui
+    command: python3 main.py run_ui
+    ports:
+      - "7860:7860"
+    volumes:
+      - ./checkpoints:/app/checkpoints
+      - ./data:/app/data
+      - ./configs:/app/configs
+      - ./src:/app/src
+    env_file:
+      - .env
+    environment:
+      - DEMO_HOST=0.0.0.0
+      - DEMO_PORT=7860
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # Status check
+  status:
+    build: .
+    container_name: qg_status
+    command: python3 main.py status
+    volumes:
+      - ./checkpoints:/app/checkpoints
+      - ./data:/app/data
+    env_file:
+      - .env
+    profiles:
+      - utils

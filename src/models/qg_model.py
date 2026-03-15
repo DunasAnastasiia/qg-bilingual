@@ -82,6 +82,18 @@ class QGModel:
         self.tokenizer.save_pretrained(output_dir)
 
     def load(self, model_dir: str):
+        import os
+        from peft import PeftModel
+
+        # Load tokenizer from checkpoint
         self.tokenizer = AutoTokenizer.from_pretrained(model_dir)
-        self.model = AutoModelForSeq2SeqLM.from_pretrained(model_dir)
+
+        # Check if this is a LoRA adapter checkpoint
+        if os.path.exists(os.path.join(model_dir, 'adapter_config.json')):
+            # Load LoRA adapter
+            self.model = PeftModel.from_pretrained(self.model, model_dir)
+        else:
+            # Load full model
+            self.model = AutoModelForSeq2SeqLM.from_pretrained(model_dir)
+
         self.model.to(self.device)
