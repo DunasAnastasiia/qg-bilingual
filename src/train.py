@@ -50,26 +50,26 @@ def train(config_path: str, mode_override: str = None):
     config = Config(config_path)
     if mode_override:
         config.config['mode'] = mode_override
-    set_seed(config.get('train.seed', 42))
+    set_seed(config.get('seed', 42))
 
     wandb.init(
         entity=os.getenv('WANDB_ENTITY', None),
         project='wh-question-generation',
-        name=f"{config['model']}-{config.get('task.lang', 'en')}-{config.get('task.mode', 'aware')}",
+        name=f"{config.get('model_name', 'model')}-{config.get('language', 'en')}-{config.get('mode', 'aware')}",
         config=config.config
     )
 
-    normalizer = TextNormalizer(language=config.get('task.lang', 'en'))
+    normalizer = TextNormalizer(language=config.get('language', 'en'))
     dataset_loader = DatasetLoader(config.config, normalizer)
 
-    if config.get('task.lang', 'en') == 'en':
+    if config.get('language', 'en') == 'en':
         dataset = dataset_loader.load_squad_v2()
     else:
         dataset_path = Path(config.data_dir) / 'ukrainian_qa.jsonl'
         raw_dataset = dataset_loader.load_ukrainian_dataset(dataset_path)
         dataset = dataset_loader.stratified_split(
             raw_dataset, config['data']['train_split'],
-            config['data']['val_split'], config.get('train.seed', 42)
+            config['data']['val_split'], config.get('seed', 42)
         )
 
     dataset = DatasetDict({
@@ -85,9 +85,9 @@ def train(config_path: str, mode_override: str = None):
             raise ValueError(f"{split_name} split has no samples after filtering")
         print(f"{split_name} split: {len(split_data)} samples")
 
-    qg_model = QGModel(config['model'], config.config, device=config.get('device', 'cuda'))
+    qg_model = QGModel(config.get('model_name', 't5-base'), config.config, device=config.get('device', 'cuda'))
     preprocessor = QGPreprocessor(
-        qg_model.tokenizer, mode=config.get('task.mode', 'aware'),
+        qg_model.tokenizer, mode=config.get('mode', 'answer_aware'),
         max_source_length=config['data']['max_context_len'],
         max_target_length=config['data']['max_question_len']
     )
@@ -100,7 +100,7 @@ def train(config_path: str, mode_override: str = None):
     qa_model = QAModel(device=config.get('device', 'cuda'))
     metrics_calc = MetricsCalculator()
 
-    output_dir = config.checkpoint_dir / config['output_dir'].split('/')[-1]
+    output_dir = config.checkpoint_dir / config.get('training.output_dir', './checkpoints/model').split('/')[-1]
     training_args = qg_model.get_training_args(str(output_dir))
 
     trainer = Seq2SeqTrainer(
