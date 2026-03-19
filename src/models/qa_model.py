@@ -6,9 +6,12 @@ from typing import Dict, Tuple
 class QAModel:
     def __init__(self, model_name: str = 'deepset/roberta-base-squad2', device: str = 'cuda'):
         self.device = device
+
+        print(f"QA Model using device: {self.device}")
+
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForQuestionAnswering.from_pretrained(model_name)
-        self.model.to(device)
+        self.model.to(self.device)
         self.model.eval()
 
     def answer_question(self, question: str, context: str) -> Dict:
@@ -30,13 +33,23 @@ class QAModel:
     def compute_em_f1(self, predicted: str, gold: str) -> Tuple[float, float]:
         pred_tokens = self._normalize_answer(predicted).split()
         gold_tokens = self._normalize_answer(gold).split()
-        em = float(pred_tokens == gold_tokens)
+        
+        # If both are empty, it's a perfect match
+        if len(pred_tokens) == 0 and len(gold_tokens) == 0:
+            return 1.0, 1.0
+            
+        # If only one is empty, it's a total mismatch
         if len(pred_tokens) == 0 or len(gold_tokens) == 0:
-            return em, 0.0
+            return 0.0, 0.0
+            
+        em = float(pred_tokens == gold_tokens)
+        
         common = set(pred_tokens) & set(gold_tokens)
         num_common = len(common)
+        
         if num_common == 0:
             return em, 0.0
+            
         precision = num_common / len(pred_tokens)
         recall = num_common / len(gold_tokens)
         f1 = (2 * precision * recall) / (precision + recall)

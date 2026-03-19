@@ -31,12 +31,42 @@ class Config:
                             self.config[key][sub_key] = sub_value
 
     def _resolve_paths(self):
-        self.data_dir = Path(os.getenv('DATA_DIR', './data'))
-        self.checkpoint_dir = Path(os.getenv('CHECKPOINT_DIR', './checkpoints'))
-        self.logs_dir = Path(os.getenv('LOGS_DIR', './logs'))
-        self.experiments_dir = Path(os.getenv('EXPERIMENTS_DIR', './experiments'))
+        # Detect if running in Docker
+        # On Windows, /.dockerenv is not a reliable indicator
+        is_docker = (os.path.exists('/.dockerenv') and os.name != 'nt') or os.getenv('DOCKER_ENV') == 'true'
+
+        # Define project root as an absolute path
+        # Assuming this file is at project_root/src/utils/config.py
+        project_root = Path(__file__).resolve().parent.parent.parent
+
+        def resolve_env_path(env_key, default_docker, default_local_name):
+            val = os.getenv(env_key)
+            if is_docker:
+                # Docker: use env value if present, else docker default
+                return Path(val or default_docker)
+            else:
+                # Local environment:
+                # If env var points to /app but we aren't in docker, treat as local default
+                if not val or val.startswith('/app'):
+                    return project_root / default_local_name
+                
+                p = Path(val)
+                # Handle /rooted/paths on Windows that are technically relative to drive root
+                if os.name == 'nt' and not p.is_absolute() and val.startswith(('/', '\\')):
+                    return project_root / val.lstrip('/\\')
+                
+                return p if p.is_absolute() else project_root / p
+
+        self.data_dir = resolve_env_path('DATA_DIR', '/app/data', 'data')
+        self.checkpoint_dir = resolve_env_path('CHECKPOINT_DIR', '/app/checkpoints', 'checkpoints')
+        self.logs_dir = resolve_env_path('LOGS_DIR', '/app/logs', 'logs')
+        self.experiments_dir = resolve_env_path('EXPERIMENTS_DIR', '/app/experiments', 'experiments')
+
         for dir_path in [self.data_dir, self.checkpoint_dir, self.logs_dir, self.experiments_dir]:
-            dir_path.mkdir(parents=True, exist_ok=True)
+            try:
+                dir_path.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                print(f"Warning: Could not create directory {dir_path}: {e}")
 
     def get(self, key: str, default=None):
         keys = key.split('.')

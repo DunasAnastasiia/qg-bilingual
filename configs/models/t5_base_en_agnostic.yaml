@@ -1,29 +1,30 @@
-model_name: t5-base
-language: en
-mode: answer_agnostic
-tokenizer_name: t5-base
-
 base_config: ../base_config.yaml
-
 dataset:
-  name: squad_v2
   language: en
+  name: squad_v2
   unanswerable_ratio: 0.33
-
+generation:
+  diversity_penalty: 0.0
+  do_sample: true
+  length_penalty: 1.2
+  max_new_tokens: 48
+  min_new_tokens: 8
+  no_repeat_ngram_size: 3
+  num_beam_groups: 1
+  num_beams: 1
+  num_return_sequences: 50
+  temperature: 1.0
+  top_k: 50
+  top_p: 0.95
+language: en
+lora:
+  enabled: true
+  lora_alpha: 64
+  lora_dropout: 0.1
+  r: 32
+mode: answer_agnostic
+model_name: t5-base
+tokenizer_name: t5-base
 training:
   num_epochs: 5
   output_dir: ./checkpoints/t5_base_en_agnostic
-
-generation:
-  do_sample: true
-  temperature: 0.8
-  top_p: 0.9
-
-lora:
-  use_lora: true
-  r: 16
-  lora_alpha: 32
-  lora_dropout: 0.1
-  target_modules:
-    - q
-    - v

@@ -75,6 +75,32 @@ services:
     profiles:
       - train
 
+  # Train specific model (flexible)
+  train:
+    build: .
+    container_name: qg_train_model
+    command: python3 main.py train --model ${MODEL_NAME:-t5_base_en_aware} --dataset ${DATASET_PERCENT:-100}
+    volumes:
+      - ./checkpoints:/app/checkpoints
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./configs:/app/configs
+      - ./src:/app/src
+    env_file:
+      - .env
+    environment:
+      - DEVICE=cuda
+      - SEED=42
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    profiles:
+      - train
+
   # Run UI
   ui:
     build: .
@@ -108,6 +134,18 @@ services:
     volumes:
       - ./checkpoints:/app/checkpoints
       - ./data:/app/data
+    env_file:
+      - .env
+    profiles:
+      - utils
+
+  # List available models
+  models:
+    build: .
+    container_name: qg_models
+    command: python3 main.py models
+    volumes:
+      - ./checkpoints:/app/checkpoints
     env_file:
       - .env
     profiles:

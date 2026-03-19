@@ -14,24 +14,63 @@ class DatasetLoader:
         self.val_limit = int(os.getenv('VAL_LIMIT', '0'))
         self.test_limit = int(os.getenv('TEST_LIMIT', '0'))
 
-    def load_squad_v2(self) -> DatasetDict:
+    def load_squad_v2(self, filter_unanswerable: bool = False, deduplicate_by_context: bool = False) -> DatasetDict:
         dataset = load_dataset('squad_v2')
         dataset = dataset.map(self._process_squad_example, remove_columns=['id', 'title'], num_proc=4)
+        
+        if filter_unanswerable:
+            dataset = DatasetDict({
+                split: dataset[split].filter(lambda x: not x['unanswerable'], num_proc=4)
+                for split in dataset.keys()
+            })
+            
+        if deduplicate_by_context:
+            dataset = DatasetDict({
+                split: self.remove_context_duplicates(dataset[split])
+                for split in dataset.keys()
+            })
+            
         dataset = self._apply_limits(dataset)
         return dataset
+
+    def remove_context_duplicates(self, dataset: Dataset) -> Dataset:
+        """Keep only one question per context."""
+        seen_contexts = set()
+        indices_to_keep = []
+        for idx, example in enumerate(dataset):
+            # Use first 200 chars as context key
+            ctx_key = example['context'][:200]
+            if ctx_key not in seen_contexts:
+                seen_contexts.add(ctx_key)
+                indices_to_keep.append(idx)
+        return dataset.select(indices_to_keep)
 
     def _process_squad_example(self, example: Dict) -> Dict:
         context = self.normalizer.normalize(example['context'])
         question = self.normalizer.normalize(example['question'])
-        if example['answers']['text']:
-            answer = self.normalizer.normalize(example['answers']['text'][0])
+        
+        # Store all available answers for robust evaluation
+        all_answers = [self.normalizer.normalize(a) for a in example['answers']['text']]
+        
+        if all_answers:
+            answer = all_answers[0]
             answer_start = example['answers']['answer_start'][0]
             unanswerable = False
         else:
             answer = ''
             answer_start = -1
             unanswerable = True
-        return {'context': context, 'question': question, 'answer': answer, 'answer_start': answer_start, 'unanswerable': unanswerable, 'lang': 'en'}
+            all_answers = ['']
+            
+        return {
+            'context': context, 
+            'question': question, 
+            'answer': answer, 
+            'all_answers': all_answers,
+            'answer_start': answer_start, 
+            'unanswerable': unanswerable, 
+            'lang': 'en'
+        }
 
     def load_ukrainian_dataset(self, file_path: Path) -> Dataset:
         examples = []

@@ -15,7 +15,7 @@ class QGPreprocessor:
                 inputs.append(f"generate question: context: {examples['context'][i]} answer: {examples['answer'][i]}")
             else:
                 inputs.append(f"generate question: context: {examples['context'][i]}")
-        model_inputs = self.tokenizer(inputs, max_length=self.max_source_length, truncation=True, padding='max_length', return_tensors=None)
-        labels = self.tokenizer(examples['question'], max_length=self.max_target_length, truncation=True, padding='max_length', return_tensors=None)
+        model_inputs = self.tokenizer(inputs, max_length=self.max_source_length, truncation=True)
+        labels = self.tokenizer(examples['question'], max_length=self.max_target_length, truncation=True)
         model_inputs['labels'] = labels['input_ids']
         return model_inputs

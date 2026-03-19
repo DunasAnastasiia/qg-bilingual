@@ -36,17 +36,18 @@ def compute_metrics(eval_preds, tokenizer, qa_model, eval_dataset, metrics_calc,
     decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
     decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
 
-    contexts = [ex['context'] for ex in eval_dataset]
-    gold_answers = [ex['answer'] for ex in eval_dataset]
+    # Only compute ROUGE metrics during training for speed and to select best model
+    rouge_metrics = metrics_calc.compute_rouge(decoded_preds, decoded_labels)
+    
+    # We only return rouge-l as the main metric for the trainer to monitor
+    # but include others for logging if needed.
+    return {
+        'rouge-l': rouge_metrics['rouge-l'],
+        'rouge-1': rouge_metrics['rouge-1'],
+        'rouge-2': rouge_metrics['rouge-2']
+    }
 
-    metrics = metrics_calc.compute_all_metrics(
-        decoded_preds, decoded_labels, contexts, gold_answers, qa_model,
-        lang=config.get('language', 'en'), config=config['evaluation']
-    )
-
-    return metrics
-
-def train(config_path: str, mode_override: str = None):
+def train(config_path: str, mode_override: str = None, dataset_percent: int = 100):
     config = Config(config_path)
     if mode_override:
         config.config['mode'] = mode_override
@@ -63,7 +64,13 @@ def train(config_path: str, mode_override: str = None):
     dataset_loader = DatasetLoader(config.config, normalizer)
 
     if config.get('language', 'en') == 'en':
-        dataset = dataset_loader.load_squad_v2()
+        # For agnostic mode, we filter unanswerable and deduplicate context to avoid one-to-many mapping
+        # which can confuse the model and lead to generic/repetitive outputs.
+        agnostic = config.get('mode') == 'answer_agnostic'
+        dataset = dataset_loader.load_squad_v2(
+            filter_unanswerable=agnostic, 
+            deduplicate_by_context=agnostic
+        )
     else:
         dataset_path = Path(config.data_dir) / 'ukrainian_qa.jsonl'
         raw_dataset = dataset_loader.load_ukrainian_dataset(dataset_path)
@@ -76,6 +83,18 @@ def train(config_path: str, mode_override: str = None):
         split: dataset_loader.filter_by_length(dataset[split], config['data'])
         for split in dataset.keys()
     })
+
+    # Subsample dataset if dataset_percent < 100
+    if dataset_percent < 100:
+        print(f"\n{'='*60}")
+        print(f"SUBSAMPLING DATASET TO {dataset_percent}%")
+        print(f"{'='*60}")
+        for split in dataset.keys():
+            original_size = len(dataset[split])
+            n_samples = max(1, int(original_size * dataset_percent / 100))
+            dataset[split] = dataset[split].shuffle(seed=config.get('seed', 42)).select(range(n_samples))
+            print(f"{split:12} | {original_size:6} → {n_samples:6} samples ({dataset_percent}%)")
+        print(f"{'='*60}\n")
 
     # Check if filtering left us with any data
     for split_name, split_data in dataset.items():
@@ -97,11 +116,21 @@ def train(config_path: str, mode_override: str = None):
         remove_columns=dataset['train'].column_names, num_proc=4
     )
 
-    qa_model = QAModel(device=config.get('device', 'cuda'))
     metrics_calc = MetricsCalculator()
 
-    output_dir = config.checkpoint_dir / config.get('training.output_dir', './checkpoints/model').split('/')[-1]
+    # Get output directory
+    output_dir_from_config = config.get('training.output_dir', './checkpoints/model')
+    # Extract just the final directory name (e.g., 't5_base_en_aware' from './checkpoints/t5_base_en_aware')
+    model_folder_name = Path(output_dir_from_config).name
+    # Combine with the environment-aware checkpoint_dir from config
+    output_dir = config.checkpoint_dir / model_folder_name
     training_args = qg_model.get_training_args(str(output_dir))
+
+    # Add EarlyStoppingCallback if configured
+    callbacks = []
+    if config.get('training.early_stopping_patience'):
+        from transformers import EarlyStoppingCallback
+        callbacks.append(EarlyStoppingCallback(early_stopping_patience=config.get('training.early_stopping_patience')))
 
     trainer = Seq2SeqTrainer(
         model=qg_model.model, args=training_args,
@@ -109,9 +138,10 @@ def train(config_path: str, mode_override: str = None):
         eval_dataset=tokenized_dataset['validation'],
         data_collator=qg_model.get_data_collator(),
         compute_metrics=lambda eval_preds: compute_metrics(
-            eval_preds, qg_model.tokenizer, qa_model,
+            eval_preds, qg_model.tokenizer, None,
             dataset['validation'], metrics_calc, config.config
-        )
+        ),
+        callbacks=callbacks
     )
 
     trainer.train()
@@ -135,7 +165,13 @@ def train(config_path: str, mode_override: str = None):
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, required=True)
-    parser.add_argument('--mode', type=str, required=False)
+    parser.add_argument('--config', type=str, required=True, help='Path to config file')
+    parser.add_argument('--mode', type=str, required=False, help='Override mode (answer_aware or answer_agnostic)')
+    parser.add_argument('--dataset_percent', type=int, default=100,
+                       help='Percentage of dataset to use (1-100, default: 100)')
     args = parser.parse_args()
-    train(args.config, args.mode)
+
+    if args.dataset_percent < 1 or args.dataset_percent > 100:
+        parser.error("--dataset_percent must be between 1 and 100")
+
+    train(args.config, args.mode, args.dataset_percent)

@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 """
 Main CLI for Question Generation Project
-Supports:
-1. Download and train demo version (limited dataset)
-2. Download production dataset
-3. Train production dataset
-4. Run UI with all trained models
+
+NEW Flexible Interface:
+  python main.py train --model t5_base_en_aware --dataset 20
+  python main.py train --model bart_base_en_agnostic --dataset 50
+  python main.py train --model mt5_base_ua_aware --dataset 100
+
+Legacy Commands:
+  python main.py download_demo
+  python main.py download_production
+  python main.py train_production
+  python main.py run_ui
+  python main.py status
 """
 
 import os
@@ -13,6 +20,7 @@ import sys
 import argparse
 import subprocess
 from pathlib import Path
+import yaml
 
 # Add project root to path
 project_root = Path(__file__).parent
@@ -20,6 +28,40 @@ sys.path.insert(0, str(project_root))
 
 from src.data.prepare_datasets import download_squad, prepare_ukrainian_dataset
 from src.utils.config import Config
+
+# Available models mapping
+AVAILABLE_MODELS = {
+    't5_base_en_aware': {
+        'config': 'configs/models/t5_base_en_aware.yaml',
+        'name': 'T5 Base (EN, Answer-Aware)',
+        'language': 'en'
+    },
+    't5_base_en_agnostic': {
+        'config': 'configs/models/t5_base_en_agnostic.yaml',
+        'name': 'T5 Base (EN, Answer-Agnostic)',
+        'language': 'en'
+    },
+    'bart_base_en_aware': {
+        'config': 'configs/models/bart_base_en_aware.yaml',
+        'name': 'BART Base (EN, Answer-Aware)',
+        'language': 'en'
+    },
+    'bart_base_en_agnostic': {
+        'config': 'configs/models/bart_base_en_agnostic.yaml',
+        'name': 'BART Base (EN, Answer-Agnostic)',
+        'language': 'en'
+    },
+    'mt5_base_ua_aware': {
+        'config': 'configs/models/mt5_base_ua_aware.yaml',
+        'name': 'mT5 Base (UA, Answer-Aware)',
+        'language': 'ua'
+    },
+    'mt5_base_ua_agnostic': {
+        'config': 'configs/models/mt5_base_ua_agnostic.yaml',
+        'name': 'mT5 Base (UA, Answer-Agnostic)',
+        'language': 'ua'
+    }
+}
 
 
 class ProjectCLI:
@@ -209,6 +251,168 @@ class ProjectCLI:
             print("\n\n✓ UI stopped")
 
 
+    def train_model(self, model_name: str, dataset_percent: int = 100):
+        """
+        Train a specific model with flexible dataset size
+
+        Args:
+            model_name: Model identifier (e.g., 't5_base_en_aware')
+            dataset_percent: Percentage of dataset to use (1-100)
+        """
+        print("=" * 80)
+        print(f"TRAINING MODEL: {model_name}")
+        print(f"Dataset: {dataset_percent}% of full data")
+        print("=" * 80)
+
+        # Validate model name
+        if model_name not in AVAILABLE_MODELS:
+            print(f"\n❌ Error: Unknown model '{model_name}'")
+            print("\nAvailable models:")
+            for key, info in AVAILABLE_MODELS.items():
+                print(f"  • {key:25} → {info['name']}")
+            sys.exit(1)
+
+        model_info = AVAILABLE_MODELS[model_name]
+        config_path = self.project_root / model_info['config']
+
+        # Check if config exists
+        if not config_path.exists():
+            print(f"\n❌ Error: Config not found at {config_path}")
+            sys.exit(1)
+
+        # Check if dataset exists
+        language = model_info['language']
+        if language == 'en':
+            dataset_path = self.data_dir / 'squad_v2'
+            if not dataset_path.exists():
+                print("\n⚠ English dataset not found. Downloading...")
+                download_squad(output_dir=dataset_path, demo_mode=False)
+        else:  # ua
+            dataset_path = self.data_dir / 'ukrainian_qa.jsonl'
+            if not dataset_path.exists():
+                print("\n⚠ Ukrainian dataset not found. Preparing...")
+                prepare_ukrainian_dataset(output_path=dataset_path, demo_mode=False)
+
+        print(f"\n✓ Dataset found: {dataset_path}")
+        print(f"✓ Config: {config_path}")
+        print(f"✓ Model: {model_info['name']}")
+
+        # Build training command
+        cmd = [
+            sys.executable,
+            str(self.project_root / 'src' / 'train.py'),
+            '--config', str(config_path),
+            '--dataset_percent', str(dataset_percent)
+        ]
+
+        print(f"\n🚀 Starting training...")
+        print(f"Command: {' '.join(cmd)}")
+        print("-" * 80)
+
+        try:
+            subprocess.run(cmd, check=True)
+            print("\n" + "=" * 80)
+            print(f"✅ Training completed: {model_info['name']}")
+            print("=" * 80)
+        except subprocess.CalledProcessError as e:
+            print("\n" + "=" * 80)
+            print(f"❌ Training failed: {model_info['name']}")
+            print(f"Error: {e}")
+            print("=" * 80)
+            sys.exit(1)
+
+    def list_models(self):
+        """List all available models"""
+        print("=" * 80)
+        print("AVAILABLE MODELS")
+        print("=" * 80)
+        print()
+
+        for key, info in AVAILABLE_MODELS.items():
+            checkpoint_path = self.project_root / f"checkpoints/{key}/final_model"
+            status = "✅ TRAINED" if checkpoint_path.exists() else "❌ NOT TRAINED"
+
+            print(f"{status:15} | {key:25} | {info['name']}")
+
+        print()
+        print("=" * 80)
+        print("\nUsage:")
+        print("  python main.py train --model <model_name> --dataset <percentage>")
+        print("\nExample:")
+        print("  python main.py train --model t5_base_en_aware --dataset 20")
+        print("=" * 80)
+
+    def evaluate_model(self, model_name: str, split: str = 'validation', max_samples: int = None):
+        """
+        Evaluate a trained model with comprehensive metrics
+
+        Args:
+            model_name: Model identifier (e.g., 't5_base_en_aware')
+            split: Dataset split to evaluate ('train', 'validation', 'test')
+            max_samples: Maximum number of samples to evaluate (None = all)
+        """
+        print("=" * 80)
+        print(f"EVALUATING MODEL: {model_name}")
+        print(f"Split: {split}")
+        if max_samples:
+            print(f"Max samples: {max_samples}")
+        print("=" * 80)
+
+        # Validate model name
+        if model_name not in AVAILABLE_MODELS:
+            print(f"\n❌ Error: Unknown model '{model_name}'")
+            print("\nAvailable models:")
+            for key, info in AVAILABLE_MODELS.items():
+                print(f"  • {key:25} → {info['name']}")
+            sys.exit(1)
+
+        model_info = AVAILABLE_MODELS[model_name]
+        config_path = self.project_root / model_info['config']
+        checkpoint_path = self.project_root / f"checkpoints/{model_name}/final_model"
+
+        # Check if model exists
+        if not checkpoint_path.exists():
+            print(f"\n❌ Error: Model not found at {checkpoint_path}")
+            print("\nPlease train the model first:")
+            print(f"  python main.py train --model {model_name}")
+            sys.exit(1)
+
+        # Check if config exists
+        if not config_path.exists():
+            print(f"\n❌ Error: Config not found at {config_path}")
+            sys.exit(1)
+
+        print(f"\n✓ Model checkpoint: {checkpoint_path}")
+        print(f"✓ Config: {config_path}")
+        print(f"✓ Model: {model_info['name']}")
+
+        # Build evaluation command
+        cmd = [
+            sys.executable,
+            str(self.project_root / 'src' / 'evaluate_model.py'),
+            '--checkpoint', str(checkpoint_path),
+            '--config', str(config_path),
+            '--split', split,
+        ]
+
+        if max_samples:
+            cmd.extend(['--max_samples', str(max_samples)])
+
+        print(f"\n🔍 Starting evaluation...")
+        print("-" * 80)
+
+        try:
+            subprocess.run(cmd, check=True)
+            print("\n" + "=" * 80)
+            print(f"✅ Evaluation completed: {model_info['name']}")
+            print("=" * 80)
+        except subprocess.CalledProcessError as e:
+            print("\n" + "=" * 80)
+            print(f"❌ Evaluation failed: {model_info['name']}")
+            print(f"Error: {e}")
+            print("=" * 80)
+            sys.exit(1)
+
     def show_status(self):
         """Show status of datasets and trained models"""
         print("=" * 60)
@@ -263,43 +467,108 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Download and train demo version (fast, limited dataset)
-  python main.py download_demo
-  python main.py train_demo
+  # NEW: Flexible training with dataset percentage
+  python main.py train --model t5_base_en_aware --dataset 20
+  python main.py train --model bart_base_en_agnostic --dataset 50
+  python main.py train --model mt5_base_ua_aware --dataset 100
 
-  # Download and train production version (full dataset, all models)
+  # Evaluate a trained model (shows all metrics with goal values)
+  python main.py evaluate --model t5_base_en_aware
+  python main.py evaluate --model mt5_base_ua_aware --split test
+  python main.py evaluate --model t5_base_en_aware --max_samples 100
+
+  # List available models
+  python main.py models
+
+  # Legacy commands
   python main.py download_production
-  python main.py train_production
-
-  # Run UI with trained models
   python main.py run_ui
-
-  # Check project status
   python main.py status
         """
     )
 
-    parser.add_argument(
-        'command',
-        choices=['download_demo', 'download_production', 'train_demo',
-                 'train_production', 'run_ui', 'status'],
-        help='Command to execute'
+    subparsers = parser.add_subparsers(dest='command', help='Command to execute')
+
+    # NEW: Train command with flexible options
+    train_parser = subparsers.add_parser('train', help='Train a specific model')
+    train_parser.add_argument(
+        '--model', '-m',
+        required=True,
+        choices=list(AVAILABLE_MODELS.keys()),
+        help='Model to train'
     )
+    train_parser.add_argument(
+        '--dataset', '-d',
+        type=int,
+        default=100,
+        choices=range(1, 101),
+        metavar='PERCENT',
+        help='Percentage of dataset to use (1-100, default: 100)'
+    )
+
+    # NEW: List models command
+    subparsers.add_parser('models', help='List all available models')
+
+    # NEW: Evaluate command
+    eval_parser = subparsers.add_parser('evaluate', help='Evaluate a trained model')
+    eval_parser.add_argument(
+        '--model', '-m',
+        required=True,
+        choices=list(AVAILABLE_MODELS.keys()),
+        help='Model to evaluate'
+    )
+    eval_parser.add_argument(
+        '--split', '-s',
+        default='validation',
+        choices=['train', 'validation', 'test'],
+        help='Dataset split to evaluate (default: validation)'
+    )
+    eval_parser.add_argument(
+        '--max_samples',
+        type=int,
+        default=None,
+        help='Max samples to evaluate (default: all)'
+    )
+
+    # Legacy commands
+    subparsers.add_parser('download_demo', help='Download demo dataset')
+    subparsers.add_parser('download_production', help='Download full dataset')
+    subparsers.add_parser('train_demo', help='Train demo model')
+    subparsers.add_parser('train_production', help='Train all models')
+    subparsers.add_parser('run_ui', help='Launch Gradio UI')
+    subparsers.add_parser('status', help='Show project status')
 
     args = parser.parse_args()
 
+    # If no command provided, show help
+    if not args.command:
+        parser.print_help()
+        sys.exit(0)
+
     cli = ProjectCLI()
 
-    commands = {
-        'download_demo': cli.download_demo,
-        'download_production': cli.download_production,
-        'train_demo': cli.train_demo,
-        'train_production': cli.train_production,
-        'run_ui': cli.run_ui,
-        'status': cli.show_status,
-    }
-
-    commands[args.command]()
+    # Handle commands
+    if args.command == 'train':
+        cli.train_model(args.model, args.dataset)
+    elif args.command == 'models':
+        cli.list_models()
+    elif args.command == 'evaluate':
+        cli.evaluate_model(args.model, args.split, args.max_samples)
+    elif args.command == 'download_demo':
+        cli.download_demo()
+    elif args.command == 'download_production':
+        cli.download_production()
+    elif args.command == 'train_demo':
+        cli.train_demo()
+    elif args.command == 'train_production':
+        cli.train_production()
+    elif args.command == 'run_ui':
+        cli.run_ui()
+    elif args.command == 'status':
+        cli.show_status()
+    else:
+        parser.print_help()
+        sys.exit(1)
 
 
 if __name__ == '__main__':

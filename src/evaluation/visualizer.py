@@ -46,6 +46,8 @@ class MetricsVisualizer:
         ax2.grid(True)
 
         plt.tight_layout()
-        plt.savefig(self.output_dir / save_name, dpi=300, bbox_inches='tight')
+        save_path = self.output_dir / save_name
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.close()
-        print(f"Saved training curves to {self.output_dir / save_name}")
+        # Print absolute path to avoid confusion
+        print(f"Saved training curves to {save_path.resolve()}")
