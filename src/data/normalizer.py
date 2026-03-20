@@ -1,7 +1,8 @@
 import re
 
+
 class TextNormalizer:
-    def __init__(self, language: str = 'en'):
+    def __init__(self, language: str = "en"):
         self.language = language
 
     def normalize(self, text: str) -> str:
@@ -10,11 +11,11 @@ class TextNormalizer:
         text = str(text)
         text = re.sub(r'[""‟„]', '"', text)
         text = re.sub(r"[''‛‚]", "'", text)
-        text = re.sub(r'[\u2018\u2019]', "'", text)
-        text = re.sub(r'[–—―]', '-', text)
-        text = re.sub(r'\s+', ' ', text)
-        text = re.sub(r'\u00a0', ' ', text)
-        text = re.sub(r'(\d),(\d)', r'\1\2', text)
+        text = re.sub(r"[\u2018\u2019]", "'", text)
+        text = re.sub(r"[–—―]", "-", text)
+        text = re.sub(r"\s+", " ", text)
+        text = re.sub(r"\u00a0", " ", text)
+        text = re.sub(r"(\d),(\d)", r"\1\2", text)
         return text.strip()
 
     def verify_answer_span(self, context: str, answer: str) -> bool:
