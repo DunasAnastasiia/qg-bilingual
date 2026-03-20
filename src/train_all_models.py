@@ -41,8 +41,7 @@ def train_model(model_config: Dict[str, str]) -> bool:
     cmd = ['python3', 'src/train.py', '--config', str(config_path)]
     if 'override_mode' in model_config:
         cmd.extend(['--mode', model_config['override_mode']])
-    
-    # Ensure ROOT_DIR is in PYTHONPATH so internal imports work
+
     env = os.environ.copy()
     root_path = str(ROOT_DIR)
     

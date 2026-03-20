@@ -2,14 +2,11 @@ import sys
 import os
 from pathlib import Path
 
-# Force the project root into sys.path before internal imports
 current_file = Path(__file__).resolve()
 project_root = current_file.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-# Third-party imports
-import torch
 import numpy as np
 from transformers import Seq2SeqTrainer
 from datasets import DatasetDict
@@ -21,11 +18,10 @@ from src.data.dataset_loader import DatasetLoader
 from src.data.normalizer import TextNormalizer
 from src.data.preprocessor import QGPreprocessor
 from src.models.qg_model import QGModel
-from src.models.qa_model import QAModel
 from src.evaluation.metrics import MetricsCalculator
 from src.evaluation.visualizer import MetricsVisualizer
 
-def compute_metrics(eval_preds, tokenizer, qa_model, eval_dataset, metrics_calc, config):
+def compute_metrics(eval_preds, tokenizer, metrics_calc, config):
     preds, labels = eval_preds
     if isinstance(preds, tuple):
         preds = preds[0]
@@ -36,12 +32,9 @@ def compute_metrics(eval_preds, tokenizer, qa_model, eval_dataset, metrics_calc,
     decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
     decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
 
-    # Only compute ROUGE metrics during training for speed and to select best model
     lang = config.get('language', 'en')
     rouge_metrics = metrics_calc.compute_rouge(decoded_preds, decoded_labels, lang=lang)
-    
-    # We only return rouge-l as the main metric for the trainer to monitor
-    # but include others for logging if needed.
+
     return {
         'rouge-l': rouge_metrics['rouge-l'],
         'rouge-1': rouge_metrics['rouge-1'],
@@ -65,8 +58,6 @@ def train(config_path: str, mode_override: str = None, dataset_percent: int = 10
     dataset_loader = DatasetLoader(config.config, normalizer)
 
     if config.get('language', 'en') == 'en':
-        # For agnostic mode, we filter unanswerable and deduplicate context to avoid one-to-many mapping
-        # which can confuse the model and lead to generic/repetitive outputs.
         agnostic = config.get('mode') == 'answer_agnostic'
         dataset = dataset_loader.load_squad_v2(
             filter_unanswerable=agnostic, 
@@ -90,7 +81,6 @@ def train(config_path: str, mode_override: str = None, dataset_percent: int = 10
         for split in dataset.keys()
     })
 
-    # Subsample dataset if dataset_percent < 100
     if dataset_percent < 100:
         print(f"\n{'='*60}")
         print(f"SUBSAMPLING DATASET TO {dataset_percent}%")
@@ -102,7 +92,6 @@ def train(config_path: str, mode_override: str = None, dataset_percent: int = 10
             print(f"{split:12} | {original_size:6} → {n_samples:6} samples ({dataset_percent}%)")
         print(f"{'='*60}\n")
 
-    # Check if filtering left us with any data
     for split_name, split_data in dataset.items():
         if len(split_data) == 0:
             print(f"ERROR: {split_name} split is empty after filtering!")
@@ -124,15 +113,11 @@ def train(config_path: str, mode_override: str = None, dataset_percent: int = 10
 
     metrics_calc = MetricsCalculator()
 
-    # Get output directory
     output_dir_from_config = config.get('training.output_dir', './checkpoints/model')
-    # Extract just the final directory name (e.g., 't5_base_en_aware' from './checkpoints/t5_base_en_aware')
     model_folder_name = Path(output_dir_from_config).name
-    # Combine with the environment-aware checkpoint_dir from config
     output_dir = config.checkpoint_dir / model_folder_name
     training_args = qg_model.get_training_args(str(output_dir))
 
-    # Add EarlyStoppingCallback if configured
     callbacks = []
     if config.get('training.early_stopping_patience'):
         from transformers import EarlyStoppingCallback

@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 from datetime import datetime
 
-# Force the project root into sys.path before internal imports
 current_file = Path(__file__).resolve()
 project_root = current_file.parent.parent
 if str(project_root) not in sys.path:
@@ -16,20 +15,16 @@ from src.models.qg_model import QGModel
 from src.data.preprocessor import QGPreprocessor
 from src.utils.config import Config
 
-# Global cache for loaded models to avoid reloading every time
 loaded_models = {}
 
 
 def get_model(model_path, config_path):
     if model_path not in loaded_models:
         config = Config(config_path)
-        # Get the base model name from config (e.g., 't5-base', 'facebook/bart-base')
         base_model_name = config.config.get('model_name', config.config.get('model', model_path))
 
-        # Initialize with base model
         model = QGModel(base_model_name, config.config)
 
-        # Load fine-tuned checkpoint if it exists
         full_model_path = project_root / model_path
         checkpoint_path = full_model_path / "final_model"
         if checkpoint_path.exists():
@@ -42,7 +37,6 @@ def get_model(model_path, config_path):
 
 
 def generate(context, answer, model_choice, mode, language):
-    # Mapping choices to actual paths/configs
     config_mapping = {
         "T5 Base (EN, Aware)": {
             "config": "configs/models/t5_base_en_aware.yaml",
@@ -77,7 +71,6 @@ def generate(context, answer, model_choice, mode, language):
     config_path = selected["config"]
     model_path = selected["model_path"]
 
-    # Check if model exists
     full_model_path = project_root / model_path
     if not full_model_path.exists():
         return f"⚠ Model not found at {model_path}. Please train the model first."
@@ -91,18 +84,15 @@ def generate(context, answer, model_choice, mode, language):
             max_target_length=qg_model.config.get('data', {}).get('max_question_len', 48)
         )
 
-        # Prepare input
         inputs = preprocessor.preprocess_function({
             'context': [context],
             'answer': [answer] if mode == 'answer_aware' else [''],
-            'question': ['']  # Needed for preprocessor
+            'question': ['']
         })
 
-        # Convert to tensors
         input_ids = torch.tensor(inputs['input_ids']).to(qg_model.device)
         attention_mask = torch.tensor(inputs['attention_mask']).to(qg_model.device)
 
-        # Generate
         gen_config = qg_model.config.get('generation', {})
         outputs = qg_model.model.generate(
             input_ids=input_ids,
@@ -116,7 +106,6 @@ def generate(context, answer, model_choice, mode, language):
 
         question = qg_model.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-        # Log results
         log_entry = {
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "model": model_choice,
@@ -132,7 +121,6 @@ def generate(context, answer, model_choice, mode, language):
         return f"Error during generation: {str(e)}"
 
 
-# Define UI
 with gr.Blocks(title="WH-Question Generation System", theme=gr.themes.Soft()) as demo:
     gr.Markdown("""
     # 🎓 WH-Question Generation System

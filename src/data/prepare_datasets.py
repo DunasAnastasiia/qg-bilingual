@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""
-Dataset Preparation Script
-Downloads SQuAD 2.0 and prepares Ukrainian Q&A dataset
-Supports both demo (limited) and production (full) modes
-"""
+
 import sys
 import json
 import logging
@@ -12,7 +8,7 @@ from datasets import load_dataset
 from tqdm import tqdm
 import random
 
-# Setup logging
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -24,14 +20,6 @@ DATA_DIR.mkdir(exist_ok=True)
 
 
 def download_squad(output_dir=None, demo_mode=False, demo_size=1000):
-    """
-    Download SQuAD 2.0 dataset
-
-    Args:
-        output_dir: Directory to save the dataset
-        demo_mode: If True, only download a small subset
-        demo_size: Number of examples for demo mode
-    """
     if output_dir is None:
         output_dir = DATA_DIR / 'squad_v2'
 
@@ -46,7 +34,6 @@ def download_squad(output_dir=None, demo_mode=False, demo_size=1000):
 
         if demo_mode:
             logger.info(f"Demo mode: limiting to {demo_size} examples per split")
-            # Take a random sample
             random.seed(42)
             dataset['train'] = dataset['train'].shuffle(seed=42).select(range(min(demo_size, len(dataset['train']))))
             dataset['validation'] = dataset['validation'].shuffle(seed=42).select(range(min(demo_size // 5, len(dataset['validation']))))
@@ -55,7 +42,6 @@ def download_squad(output_dir=None, demo_mode=False, demo_size=1000):
         logger.info(f"  - Train examples: {len(dataset['train'])}")
         logger.info(f"  - Validation examples: {len(dataset['validation'])}")
 
-        # Save to local cache
         for split in ['train', 'validation']:
             output_file = output_dir / f'{split}.jsonl'
             with open(output_file, 'w', encoding='utf-8') as f:
@@ -210,14 +196,6 @@ def get_ukrainian_examples():
 
 
 def prepare_ukrainian_dataset(output_path=None, demo_mode=False, demo_size=1000):
-    """
-    Prepare Ukrainian Q&A dataset
-
-    Args:
-        output_path: Path to save the dataset
-        demo_mode: If True, create a small sample
-        demo_size: Number of examples for demo (will be multiplied by variations)
-    """
     if output_path is None:
         output_path = DATA_DIR / 'ukrainian_qa.jsonl'
 
@@ -225,7 +203,6 @@ def prepare_ukrainian_dataset(output_path=None, demo_mode=False, demo_size=1000)
     output_path.parent.mkdir(exist_ok=True, parents=True)
 
     try:
-        # Load from Hugging Face with no checks to avoid NonMatchingSplitsSizesError
         dataset = load_dataset('nogyxo/question-answering-ukrainian', verification_mode="no_checks")
 
         if demo_mode:
@@ -238,9 +215,7 @@ def prepare_ukrainian_dataset(output_path=None, demo_mode=False, demo_size=1000)
         logger.info(f"  - Train examples: {len(dataset['train'])}")
         logger.info(f"  - Test examples: {len(dataset['test'])}")
 
-        # Save to local cache as ukrainian_qa.jsonl (merging train and test for later splitting)
         with open(output_path, 'w', encoding='utf-8') as f:
-            # First, add manual examples for better variety/quality on common topics
             manual_examples = get_ukrainian_examples()
             for ex in manual_examples:
                 record = {
@@ -248,15 +223,13 @@ def prepare_ukrainian_dataset(output_path=None, demo_mode=False, demo_size=1000)
                     'question': ex['question'],
                     'answer': ex['answer'],
                     'all_answers': [ex['answer']],
-                    'answer_start': -1, # Will be found by normalizer
+                    'answer_start': -1,
                     'is_impossible': False
                 }
                 f.write(json.dumps(record, ensure_ascii=False) + '\n')
 
-            # Then, add examples from the professional dataset
             for split in ['train', 'test']:
                 for example in tqdm(dataset[split], desc=f"Saving Ukrainian {split}"):
-                    # nogyxo/question-answering-ukrainian columns: context, question, is_impossible, answer_start, answer_text
                     record = {
                         'context': example['context'],
                         'question': example['question'],
@@ -271,7 +244,6 @@ def prepare_ukrainian_dataset(output_path=None, demo_mode=False, demo_size=1000)
         return True
     except Exception as e:
         logger.error(f"✗ Failed to prepare Ukrainian dataset: {e}")
-        # Fallback to manual examples if HF fails
         logger.info("Falling back to manual examples only...")
         manual_examples = get_ukrainian_examples()
         with open(output_path, 'w', encoding='utf-8') as f:
@@ -301,7 +273,6 @@ def verify_datasets():
     all_present = True
     for file_path in required_files:
         if file_path.exists():
-            # Count lines
             with open(file_path, 'r', encoding='utf-8') as f:
                 line_count = sum(1 for _ in f)
             logger.info(f"  ✓ {file_path.name}: {line_count} examples")

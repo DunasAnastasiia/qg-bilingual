@@ -15,21 +15,16 @@ Legacy Commands:
   python main.py status
 """
 
-import os
 import sys
 import argparse
 import subprocess
 from pathlib import Path
-import yaml
 
-# Add project root to path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
 from src.data.prepare_datasets import download_squad, prepare_ukrainian_dataset
-from src.utils.config import Config
 
-# Available models mapping
 AVAILABLE_MODELS = {
     't5_base_en_aware': {
         'config': 'configs/models/t5_base_en_aware.yaml',
@@ -71,7 +66,6 @@ class ProjectCLI:
         self.checkpoints_dir = self.project_root / 'checkpoints'
         self.configs_dir = self.project_root / 'configs'
 
-        # Ensure directories exist
         self.data_dir.mkdir(exist_ok=True)
         self.checkpoints_dir.mkdir(exist_ok=True)
 
@@ -81,16 +75,14 @@ class ProjectCLI:
         print("DOWNLOADING DEMO DATASET (Limited)")
         print("=" * 60)
 
-        # Download English dataset (small subset)
         print("\n[1/2] Downloading English dataset (SQuAD 2.0 demo subset)...")
-        demo_size = 1000  # Small subset for demo
+        demo_size = 1000
         download_squad(
             output_dir=self.data_dir / 'squad_v2',
             demo_mode=True,
             demo_size=demo_size
         )
 
-        # Download/prepare Ukrainian dataset (small subset)
         print("\n[2/2] Preparing Ukrainian dataset (demo subset)...")
         prepare_ukrainian_dataset(
             output_path=self.data_dir / 'ukrainian_qa.jsonl',
@@ -103,19 +95,15 @@ class ProjectCLI:
         print(f"  - Ukrainian: {self.data_dir / 'ukrainian_qa.jsonl'}")
 
     def download_production(self):
-        """Download full production dataset"""
         print("=" * 60)
         print("DOWNLOADING PRODUCTION DATASET (Full)")
         print("=" * 60)
 
-        # Download English dataset (full)
         print("\n[1/2] Downloading English dataset (SQuAD 2.0 full)...")
         download_squad(
             output_dir=self.data_dir / 'squad_v2',
             demo_mode=False
         )
-
-        # Download/prepare Ukrainian dataset (full)
         print("\n[2/2] Preparing Ukrainian dataset (full)...")
         prepare_ukrainian_dataset(
             output_path=self.data_dir / 'ukrainian_qa.jsonl',
@@ -132,12 +120,10 @@ class ProjectCLI:
         print("TRAINING DEMO VERSION")
         print("=" * 60)
 
-        # Check if demo data exists
         if not (self.data_dir / 'squad_v2').exists():
             print("⚠ Demo dataset not found. Downloading first...")
             self.download_demo()
 
-        # Train small/fast models for demo
         models_to_train = [
             ('configs/train_t5_smoke_en.yaml', 'T5-small (EN)'),
         ]
@@ -164,17 +150,14 @@ class ProjectCLI:
         print("=" * 60)
 
     def train_production(self):
-        """Train all production models"""
         print("=" * 60)
         print("TRAINING PRODUCTION MODELS")
         print("=" * 60)
 
-        # Check if production data exists
         if not (self.data_dir / 'squad_v2').exists():
             print("⚠ Production dataset not found. Downloading first...")
             self.download_production()
 
-        # Train all 6 models: T5, BART, mT5 × (aware, agnostic)
         models_to_train = [
             # English - Answer Aware
             ('configs/models/t5_base_en_aware.yaml', 'T5 Base (EN, Answer-Aware)'),
@@ -214,7 +197,6 @@ class ProjectCLI:
         print("=" * 60)
 
     def run_ui(self):
-        """Run UI with all trained models"""
         print("=" * 60)
         print("LAUNCHING UI")
         print("=" * 60)
@@ -252,19 +234,11 @@ class ProjectCLI:
 
 
     def train_model(self, model_name: str, dataset_percent: int = 100):
-        """
-        Train a specific model with flexible dataset size
-
-        Args:
-            model_name: Model identifier (e.g., 't5_base_en_aware')
-            dataset_percent: Percentage of dataset to use (1-100)
-        """
         print("=" * 80)
         print(f"TRAINING MODEL: {model_name}")
         print(f"Dataset: {dataset_percent}% of full data")
         print("=" * 80)
 
-        # Validate model name
         if model_name not in AVAILABLE_MODELS:
             print(f"\n❌ Error: Unknown model '{model_name}'")
             print("\nAvailable models:")
@@ -275,19 +249,17 @@ class ProjectCLI:
         model_info = AVAILABLE_MODELS[model_name]
         config_path = self.project_root / model_info['config']
 
-        # Check if config exists
         if not config_path.exists():
             print(f"\n❌ Error: Config not found at {config_path}")
             sys.exit(1)
 
-        # Check if dataset exists
         language = model_info['language']
         if language == 'en':
             dataset_path = self.data_dir / 'squad_v2'
             if not dataset_path.exists():
                 print("\n⚠ English dataset not found. Downloading...")
                 download_squad(output_dir=dataset_path, demo_mode=False)
-        else:  # ua
+        else:
             dataset_path = self.data_dir / 'ukrainian_qa.jsonl'
             if not dataset_path.exists():
                 print("\n⚠ Ukrainian dataset not found. Preparing...")
@@ -297,7 +269,6 @@ class ProjectCLI:
         print(f"✓ Config: {config_path}")
         print(f"✓ Model: {model_info['name']}")
 
-        # Build training command
         cmd = [
             sys.executable,
             str(self.project_root / 'src' / 'train.py'),
@@ -322,7 +293,6 @@ class ProjectCLI:
             sys.exit(1)
 
     def list_models(self):
-        """List all available models"""
         print("=" * 80)
         print("AVAILABLE MODELS")
         print("=" * 80)
@@ -343,14 +313,6 @@ class ProjectCLI:
         print("=" * 80)
 
     def evaluate_model(self, model_name: str, split: str = 'validation', max_samples: int = None):
-        """
-        Evaluate a trained model with comprehensive metrics
-
-        Args:
-            model_name: Model identifier (e.g., 't5_base_en_aware')
-            split: Dataset split to evaluate ('train', 'validation', 'test')
-            max_samples: Maximum number of samples to evaluate (None = all)
-        """
         print("=" * 80)
         print(f"EVALUATING MODEL: {model_name}")
         print(f"Split: {split}")
@@ -358,7 +320,6 @@ class ProjectCLI:
             print(f"Max samples: {max_samples}")
         print("=" * 80)
 
-        # Validate model name
         if model_name not in AVAILABLE_MODELS:
             print(f"\n❌ Error: Unknown model '{model_name}'")
             print("\nAvailable models:")
@@ -370,14 +331,12 @@ class ProjectCLI:
         config_path = self.project_root / model_info['config']
         checkpoint_path = self.project_root / f"checkpoints/{model_name}/final_model"
 
-        # Check if model exists
         if not checkpoint_path.exists():
             print(f"\n❌ Error: Model not found at {checkpoint_path}")
             print("\nPlease train the model first:")
             print(f"  python main.py train --model {model_name}")
             sys.exit(1)
 
-        # Check if config exists
         if not config_path.exists():
             print(f"\n❌ Error: Config not found at {config_path}")
             sys.exit(1)
@@ -386,7 +345,6 @@ class ProjectCLI:
         print(f"✓ Config: {config_path}")
         print(f"✓ Model: {model_info['name']}")
 
-        # Build evaluation command
         cmd = [
             sys.executable,
             str(self.project_root / 'src' / 'evaluate_model.py'),
@@ -414,14 +372,12 @@ class ProjectCLI:
             sys.exit(1)
 
     def show_status(self):
-        """Show status of datasets and trained models"""
         print("=" * 60)
         print("PROJECT STATUS")
         print("=" * 60)
 
         print("\n📁 DATASETS:")
 
-        # Check English dataset
         en_data = self.data_dir / 'squad_v2'
         if en_data.exists():
             train_file = en_data / 'train.jsonl'
@@ -433,7 +389,6 @@ class ProjectCLI:
         else:
             print(f"  ✗ English: Not downloaded")
 
-        # Check Ukrainian dataset
         ua_data = self.data_dir / 'ukrainian_qa.jsonl'
         if ua_data.exists():
             print(f"  ✓ Ukrainian: {ua_data}")
@@ -489,7 +444,6 @@ Examples:
 
     subparsers = parser.add_subparsers(dest='command', help='Command to execute')
 
-    # NEW: Train command with flexible options
     train_parser = subparsers.add_parser('train', help='Train a specific model')
     train_parser.add_argument(
         '--model', '-m',
@@ -506,10 +460,8 @@ Examples:
         help='Percentage of dataset to use (1-100, default: 100)'
     )
 
-    # NEW: List models command
     subparsers.add_parser('models', help='List all available models')
 
-    # NEW: Evaluate command
     eval_parser = subparsers.add_parser('evaluate', help='Evaluate a trained model')
     eval_parser.add_argument(
         '--model', '-m',
@@ -530,7 +482,6 @@ Examples:
         help='Max samples to evaluate (default: all)'
     )
 
-    # Legacy commands
     subparsers.add_parser('download_demo', help='Download demo dataset')
     subparsers.add_parser('download_production', help='Download full dataset')
     subparsers.add_parser('train_demo', help='Train demo model')
@@ -540,14 +491,12 @@ Examples:
 
     args = parser.parse_args()
 
-    # If no command provided, show help
     if not args.command:
         parser.print_help()
         sys.exit(0)
 
     cli = ProjectCLI()
 
-    # Handle commands
     if args.command == 'train':
         cli.train_model(args.model, args.dataset)
     elif args.command == 'models':

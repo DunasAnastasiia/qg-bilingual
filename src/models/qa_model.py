@@ -20,8 +20,7 @@ class QAModel:
     def answer_question_batch(self, questions: list[str], contexts: list[str]) -> list[Dict]:
         if not questions:
             return []
-        
-        # Ensure contexts is same length as questions
+
         if len(contexts) == 1 and len(questions) > 1:
             contexts = contexts * len(questions)
             
@@ -56,12 +55,10 @@ class QAModel:
     def compute_em_f1(self, predicted: str, gold: str) -> Tuple[float, float]:
         pred_tokens = self._normalize_answer(predicted).split()
         gold_tokens = self._normalize_answer(gold).split()
-        
-        # If both are empty, it's a perfect match
+
         if len(pred_tokens) == 0 and len(gold_tokens) == 0:
             return 1.0, 1.0
-            
-        # If only one is empty, it's a total mismatch
+
         if len(pred_tokens) == 0 or len(gold_tokens) == 0:
             return 0.0, 0.0
             
@@ -80,10 +77,8 @@ class QAModel:
 
     def _normalize_answer(self, text: str) -> str:
         text = text.lower()
-        # Remove English articles
         text = re.sub(r'\b(a|an|the)\b', ' ', text)
-        # Remove punctuation, but keep alphanumeric characters from various scripts
-        # \w in Python 3 matches Unicode characters including Cyrillic
+
         text = re.sub(r'[^\w\s]', '', text)
         text = re.sub(r'\s+', ' ', text)
         return text.strip()

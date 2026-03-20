@@ -24,16 +24,12 @@ class MetricsCalculator:
     @property
     def bertscore(self):
         if self._bertscore is None:
-            # We use BERTScorer directly to handle some special cases like OverflowError
             from bert_score import BERTScorer
             import torch
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            # Default to English model for English, and multilingual for others
-            # microsoft/deberta-xlarge-mnli is a good default for English
             model_type = 'microsoft/deberta-xlarge-mnli'
             
             self._bertscore = BERTScorer(model_type=model_type, lang='en', device=device)
-            # Fix for OverflowError in Deberta: cap model_max_length
             if self._bertscore._tokenizer.model_max_length > 1e10:
                 self._bertscore._tokenizer.model_max_length = 512
                 
@@ -47,16 +43,13 @@ class MetricsCalculator:
         norm_refs = []
         for refs in references:
             if isinstance(refs, str):
-                # Single reference as a string -> convert to [ref]
                 norm_refs.append([refs])
             elif isinstance(refs, (list, tuple)):
-                # Already a list/tuple -> ensure it's a list of strings
                 if not refs:
                     norm_refs.append([""])
                 else:
                     norm_refs.append([str(r) for r in refs])
             else:
-                # Other types -> convert to [str(ref)]
                 norm_refs.append([str(refs)])
         return norm_refs
 
@@ -64,52 +57,40 @@ class MetricsCalculator:
         try:
             if not predictions:
                 return {'rouge-1': 0.0, 'rouge-2': 0.0, 'rouge-l': 0.0}
-            
-            # Normalize references to List[List[str]]
+
             norm_refs = self._normalize_references(references)
-            
-            # evaluate('rouge') supports multi-reference natively (List[List[str]])
-            # and takes the max score per prediction.
-            # Use a custom tokenizer that supports Unicode (Cyrillic) word characters
-            # to avoid the default English-centric tokenizer that strips non-ASCII.
+
             import re
             
             def stem_ukrainian(word):
                 """Покращений стеммер для української мови"""
                 if len(word) <= 3:
                     return word
-                
-                # 1. Спроба видалити довгі закінчення
+
                 new_word = re.sub(r'(ами|ями|иму|ими|ому|ові|еві|ого|ої|ій|ий|ям|ам|ах|ях|ів|ей|ою|ею|ий|их|іх)$', '', word)
                 if len(new_word) < 3:
                     word = word
                 else:
                     word = new_word
-                    
-                # 2. Спроба видалити короткі закінчення
+
                 new_word = re.sub(r'(а|я|о|е|и|і|у|ю)$', '', word)
                 if len(new_word) < 3:
                     word = word
                 else:
                     word = new_word
-                    
-                # 3. Дієслівні закінчення (тільки якщо слово ще достатньо довге)
+
                 if len(word) > 4:
                     word = re.sub(r'(ться|лись|всь|ти|ла|ло|ли|в|ш|те|мо)$', '', word)
                     
                 return word
 
             def unicode_tokenizer(text):
-                # Standardize and tokenize while keeping Unicode characters
-                # \w in Python 3 matches Unicode characters including Cyrillic
                 tokens = re.findall(r'\w+', text.lower(), re.UNICODE)
                 if lang == 'ua':
                     return [stem_ukrainian(t) for t in tokens]
                 return tokens
-                
-            # Use custom tokenizer for non-English languages to preserve Unicode characters
+
             tokenizer_arg = unicode_tokenizer if lang != 'en' else None
-            # If we use our own stemmer for UA, don't use default stemmer (which is English-only)
             use_stemmer = (lang == 'en')
             
             res = self.rouge.compute(
@@ -132,12 +113,9 @@ class MetricsCalculator:
         try:
             if not predictions:
                 return 0.0
-            
-            # Normalize references to List[List[str]]
+
             norm_refs_per_sample = self._normalize_references(references)
-            
-            # SacreBLEU expects List[List[str]] but it must be padded to the same number of references.
-            # norm_refs_per_sample is List[num_preds][num_refs]
+
             max_refs = max(len(refs) for refs in norm_refs_per_sample) if norm_refs_per_sample else 1
             
             final_refs = []
@@ -145,8 +123,7 @@ class MetricsCalculator:
                 if len(rlist) < max_refs:
                     rlist = rlist + [rlist[-1]] * (max_refs - len(rlist))
                 final_refs.append(rlist)
-            
-            # Pass as List[num_preds][num_refs] (Nested format)
+
             result = self.bleu.compute(predictions=predictions, references=final_refs)
             return result['score']
         except Exception as e:
@@ -158,10 +135,8 @@ class MetricsCalculator:
             if not predictions:
                 return {'bertscore-precision': 0.0, 'bertscore-recall': 0.0, 'bertscore-f1': 0.0, 'bertscore': 0.0}
 
-            # Normalize references to List[List[str]]
             norm_refs = self._normalize_references(references)
 
-            # Filter empty sequences to avoid issues with some models
             filtered_preds, filtered_refs = [], []
             for p, r_list in zip(predictions, norm_refs):
                 if p.strip() and r_list and any(r.strip() for r in r_list):
@@ -171,9 +146,6 @@ class MetricsCalculator:
             if not filtered_preds:
                 return {'bertscore-precision': 0.0, 'bertscore-recall': 0.0, 'bertscore-f1': 0.0, 'bertscore': 0.0}
 
-            # We need to handle the case where the scorer was initialized for a different language
-            # For now, we assume it's English by default as per __init__ logic
-            # If lang is not 'en', we might need to re-initialize or have a second scorer
             if lang != 'en' and not hasattr(self, '_bertscore_multilang'):
                 from bert_score import BERTScorer
                 import torch
@@ -183,11 +155,9 @@ class MetricsCalculator:
                     self._bertscore_multilang._tokenizer.model_max_length = 512
             
             scorer = self.bertscore if lang == 'en' else self._bertscore_multilang
-            
-            # Compute BERTScore
+
             P, R, F1 = scorer.score(filtered_preds, filtered_refs)
-            
-            # Ensure results are numpy arrays or lists before calling mean
+
             def to_numpy_list(val):
                 if isinstance(val, (list, tuple)):
                     return np.array(val)
@@ -207,13 +177,10 @@ class MetricsCalculator:
                 'bertscore': mean_f1  # For convenience
             }
         except (OverflowError, Exception) as e:
-            # We don't want to crash the whole training if BERTScore fails
-            # But we should log the issue if it's persistent
             import traceback
             traceback_str = traceback.format_exc()
             print(f"Warning: BERTScore computation failed with error: {e}. Skipping BERTScore.")
-            # Only print traceback if it's a new or critical issue, for now we keep it quiet to not spam logs
-            # unless it's the specific "int too big to convert" error which we want to debug
+
             if "int too big to convert" in str(e):
                 print(f"Detailed BERTScore error:\n{traceback_str}")
             return {'bertscore-precision': 0.0, 'bertscore-recall': 0.0, 'bertscore-f1': 0.0}
@@ -224,8 +191,7 @@ class MetricsCalculator:
             for pred_q, context, gold_ans_list in zip(predictions, contexts, gold_answers):
                 try:
                     qa_result = qa_model.answer_question(pred_q, context)
-                    
-                    # Compute EM/F1 against ALL gold answers for this context and take the best
+
                     best_em, best_f1 = 0.0, 0.0
                     for gold_ans in gold_ans_list:
                         em, f1 = qa_model.compute_em_f1(qa_result['answer'], gold_ans)
