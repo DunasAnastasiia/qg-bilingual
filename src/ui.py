@@ -13,21 +13,11 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from src.models.qg_model import QGModel
-from src.models.qa_model import QAModel
 from src.data.preprocessor import QGPreprocessor
 from src.utils.config import Config
-from src.evaluation.metrics import MetricsCalculator
 
 # Global cache for loaded models to avoid reloading every time
 loaded_models = {}
-qa_model = None
-
-
-def get_qa_model():
-    global qa_model
-    if qa_model is None:
-        qa_model = QAModel(device='cuda' if torch.cuda.is_available() else 'cpu')
-    return qa_model
 
 
 def get_model(model_path, config_path):
@@ -82,7 +72,7 @@ def generate(context, answer, model_choice, mode, language):
 
     selected = config_mapping.get(model_choice)
     if not selected:
-        return "Invalid model selection.", {}, ""
+        return "Invalid model selection."
 
     config_path = selected["config"]
     model_path = selected["model_path"]
@@ -90,7 +80,7 @@ def generate(context, answer, model_choice, mode, language):
     # Check if model exists
     full_model_path = project_root / model_path
     if not full_model_path.exists():
-        return f"⚠ Model not found at {model_path}. Please train the model first.", {}, ""
+        return f"⚠ Model not found at {model_path}. Please train the model first."
 
     try:
         qg_model = get_model(model_path, config_path)
@@ -126,59 +116,20 @@ def generate(context, answer, model_choice, mode, language):
 
         question = qg_model.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-        # Calculate metrics if answer is provided
-        metrics_dict = {}
-        validation_status = ""
-
-        if answer.strip():
-            try:
-                qa = get_qa_model()
-                metrics_calc = MetricsCalculator()
-
-                # QG→QA validation
-                qa_result = qa.answer_question(question, context)
-                qa_answer = qa_result['answer']
-                qa_conf = qa_result['confidence']
-
-                # Calculate EM and F1 using QA model's method
-                em, f1 = qa.compute_em_f1(qa_answer, answer)
-
-                metrics_dict = {
-                    "QA Answer": qa_answer,
-                    "QA Confidence": f"{qa_conf:.3f}",
-                    "Exact Match": f"{em:.3f}",
-                    "F1 Score": f"{f1:.3f}",
-                }
-
-                # Validation status
-                if em == 1.0:
-                    validation_status = "✅ PASSED - Question is answerable and correct"
-                elif f1 >= 0.8:
-                    validation_status = f"⚠ PARTIAL - F1={f1:.2f} (threshold: 0.8)"
-                else:
-                    validation_status = f"❌ FAILED - F1={f1:.2f} (below threshold)"
-
-            except Exception as e:
-                validation_status = f"⚠ Validation error: {str(e)}"
-        else:
-            validation_status = "ℹ No answer provided - skipping QG→QA validation"
-
         # Log results
         log_entry = {
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "model": model_choice,
             "mode": mode,
             "language": language,
-            "question": question,
-            "metrics": metrics_dict,
-            "validation": validation_status
+            "question": question
         }
         print(json.dumps(log_entry, ensure_ascii=False, indent=2))
 
-        return question, metrics_dict, validation_status
+        return question
 
     except Exception as e:
-        return f"Error during generation: {str(e)}", {}, ""
+        return f"Error during generation: {str(e)}"
 
 
 # Define UI
@@ -244,23 +195,10 @@ with gr.Blocks(title="WH-Question Generation System", theme=gr.themes.Soft()) as
             output_text = gr.Textbox(
                 label="Generated Question",
                 interactive=False,
-                lines=3
+                lines=5
             )
 
-            gr.Markdown("### 📊 Quality Metrics")
-
-            metrics_output = gr.JSON(
-                label="QG→QA Validation Metrics",
-                visible=True
-            )
-
-            validation_output = gr.Textbox(
-                label="Validation Status",
-                interactive=False,
-                lines=2
-            )
-
-    with gr.Accordion("📚 Examples", open=False):
+    with gr.Accordion("📚 Examples", open=True):
         gr.Examples(
             examples=[
                 [
@@ -272,6 +210,20 @@ with gr.Blocks(title="WH-Question Generation System", theme=gr.themes.Soft()) as
                 ],
                 [
                     "Quantum mechanics is a fundamental theory in physics that provides a description of the physical properties of nature at the scale of atoms and subatomic particles.",
+                    "",
+                    "BART Base (EN, Agnostic)",
+                    "answer_agnostic",
+                    "en"
+                ],
+                [
+                    "The Great Wall of China is a series of fortifications that were built across the historical northern borders of ancient Chinese states and Imperial China as protection against various nomadic groups from the Eurasian Steppe.",
+                    "ancient Chinese states",
+                    "T5 Base (EN, Aware)",
+                    "answer_aware",
+                    "en"
+                ],
+                [
+                    "The Pacific Ocean is the largest and deepest of Earth's five oceanic divisions. It extends from the Arctic Ocean in the north to the Southern Ocean in the south.",
                     "",
                     "BART Base (EN, Agnostic)",
                     "answer_agnostic",
@@ -292,6 +244,20 @@ with gr.Blocks(title="WH-Question Generation System", theme=gr.themes.Soft()) as
                     "ua"
                 ],
                 [
+                    "Тарас Григорович Шевченко — видатний український поет, прозаїк, художник, етнограф. Його літературна спадщина вважається основою сучасної української літератури.",
+                    "основою сучасної української літератури",
+                    "mT5 Base (UA, Aware)",
+                    "answer_aware",
+                    "ua"
+                ],
+                [
+                    "Карпати — гірська система на заході України. Найвищою точкою українських Карпат є гора Говерла, висота якої становить 2061 метр над рівнем моря.",
+                    "",
+                    "mT5 Base (UA, Agnostic)",
+                    "answer_agnostic",
+                    "ua"
+                ],
+                [
                     "Albert Einstein was born in Ulm, Germany on March 14, 1879. He developed the theory of relativity, one of the two pillars of modern physics.",
                     "March 14, 1879",
                     "BART Base (EN, Aware)",
@@ -302,39 +268,10 @@ with gr.Blocks(title="WH-Question Generation System", theme=gr.themes.Soft()) as
             inputs=[context_input, answer_input, model_dropdown, mode_radio, lang_radio]
         )
 
-    gr.Markdown("""
-    ---
-    ### 📖 How to Use
-
-    1. **Paste Context**: Enter the text passage
-    2. **Provide Answer** (optional for aware mode): Enter the target answer span
-    3. **Select Model**: Choose from T5, BART, or mT5
-    4. **Choose Mode**: Answer-aware or Answer-agnostic
-    5. **Set Language**: EN (English) or UA (Ukrainian)
-    6. **Generate**: Click the button to generate a question
-
-    ### 📈 Metrics Explained
-
-    - **QA Answer**: What a QA model extracts as the answer to the generated question
-    - **QA Confidence**: Model's confidence in the extracted answer (0-1)
-    - **Exact Match (EM)**: 1.0 if QA answer exactly matches the target, 0.0 otherwise
-    - **F1 Score**: Token-level overlap between QA answer and target (0-1)
-    - **Validation Status**: PASSED if EM=1.0, PARTIAL if F1≥0.8, FAILED otherwise
-
-    ### 🔬 About This Project
-
-    This system implements bilingual (EN/UA) WH-question generation using transformer models:
-    - **Answer-Aware**: Uses highlighted answer to focus question generation
-    - **Answer-Agnostic**: Generates questions without pre-specified answers
-    - **QG→QA Validation**: Verifies questions are answerable from the context
-
-    Built with: PyTorch, Hugging Face Transformers, Gradio
-    """)
-
     generate_btn.click(
         fn=generate,
         inputs=[context_input, answer_input, model_dropdown, mode_radio, lang_radio],
-        outputs=[output_text, metrics_output, validation_output]
+        outputs=[output_text]
     )
 
 
