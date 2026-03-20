@@ -1,21 +1,23 @@
-model_name: facebook/bart-base
-language: en
-mode: answer_aware
-tokenizer_name: facebook/bart-base
-
 base_config: ../base_config.yaml
-
 dataset:
-  name: squad_v2
   language: en
+  name: squad_v2
   unanswerable_ratio: 0.33
-
-training:
-  num_epochs: 5
-  output_dir: ./checkpoints/bart_base_en_aware
-
+generation:
+  do_sample: false
+  length_penalty: 1.1
+  no_repeat_ngram_size: 3
+  num_beams: 6
+  num_return_sequences: 6
+language: en
 lora:
   enabled: true
-  r: 32
   lora_alpha: 64
   lora_dropout: 0.1
+  r: 32
+mode: answer_aware
+model_name: facebook/bart-base
+tokenizer_name: facebook/bart-base
+training:
+  num_epochs: 3
+  output_dir: ./checkpoints/bart_base_en_aware

@@ -1,7 +1,14 @@
 import torch
 import os
+import sys
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, Seq2SeqTrainingArguments, DataCollatorForSeq2Seq
 from peft import LoraConfig, get_peft_model, TaskType
+
+# Set matmul precision to high for better performance on Blackwell/Ada Lovelace GPUs
+if torch.cuda.is_available():
+    torch.set_float32_matmul_precision('high')
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
 
 torch.backends.cudnn.benchmark = True
 
@@ -19,18 +26,22 @@ class QGModel:
         print(f"Using device: {self.device}")
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+        # Load model in bfloat16 for better performance and memory usage on modern GPUs
+        # device_map="auto" helps optimize model placement
+        self.model = AutoModelForSeq2SeqLM.from_pretrained(
+            model_name, 
+            dtype=torch.bfloat16 if self.device == 'cuda' else torch.float32,
+            device_map={"": self.device} if self.device == 'cuda' else None
+        )
         if config.get('lora', {}).get('enabled', False):
             self._apply_lora()
         self.model.to(self.device)
         
         # Optimization: torch.compile for faster training (PyTorch 2.0+)
-        if hasattr(torch, 'compile') and os.name != 'nt': # torch.compile has issues on Windows sometimes
-            try:
-                print("Enabling torch.compile for model optimization...")
-                self.model = torch.compile(self.model)
-            except Exception as e:
-                print(f"Could not enable torch.compile: {e}")
+        # On Windows, Triton is often missing, which is required for Inductor backend.
+        self.compiled = False
+        # Disabling torch.compile on Windows due to Triton dependency issues.
+        # It can be re-enabled on Linux or if Triton for Windows is installed.
 
     def _apply_lora(self):
         # Determine target modules based on model architecture
@@ -38,7 +49,7 @@ class QGModel:
             # Expanded target modules for better T5 fine-tuning
             default_target_modules = ["q", "k", "v", "o", "wi", "wo", "wi_0", "wi_1"]
         elif 'bart' in self.model_name.lower():
-            default_target_modules = ['q_proj', 'v_proj', 'k_proj', 'out_proj']
+            default_target_modules = ['q_proj', 'v_proj', 'k_proj', 'out_proj', 'fc1', 'fc2']
         else:
             default_target_modules = ['q', 'v']
 
@@ -62,11 +73,13 @@ class QGModel:
             print("⚠ WARNING: fp16/bf16 disabled (CPU doesn't support mixed precision training)")
 
         # Performance optimization: adjust dataloader_num_workers on Windows with gradient_checkpointing
-        # to avoid pickling errors with PEFT models.
+        # or torch.compile to avoid pickling errors.
         dataloader_num_workers = self.config['training'].get('dataloader_num_workers', 0)
-        if os.name == 'nt' and dataloader_num_workers > 0 and self.config['training'].get('gradient_checkpointing', False):
-            print("⚠ WARNING: Setting dataloader_num_workers=0 on Windows because gradient_checkpointing is enabled (avoids pickling errors)")
-            dataloader_num_workers = 0
+        if os.name == 'nt' and dataloader_num_workers > 0:
+            if self.config['training'].get('gradient_checkpointing', False) or self.compiled:
+                reason = "gradient_checkpointing is enabled" if self.config['training'].get('gradient_checkpointing', False) else "torch.compile is enabled"
+                print(f"⚠ WARNING: Setting dataloader_num_workers=0 on Windows because {reason} (avoids pickling errors)")
+                dataloader_num_workers = 0
 
         kwargs = {
             "output_dir": output_dir,
@@ -96,7 +109,7 @@ class QGModel:
             "gradient_checkpointing": self.config['training'].get('gradient_checkpointing', False),
             "dataloader_num_workers": dataloader_num_workers,
             "dataloader_pin_memory": self.config['training'].get('dataloader_pin_memory', self.device == 'cuda'),
-            "remove_unused_columns": True,
+            "remove_unused_columns": False,
             "group_by_length": True,
             "lr_scheduler_type": "cosine",
             "optim": "adamw_torch_fused" if self.device == 'cuda' else "adamw_torch"

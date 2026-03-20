@@ -37,7 +37,8 @@ def compute_metrics(eval_preds, tokenizer, qa_model, eval_dataset, metrics_calc,
     decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
 
     # Only compute ROUGE metrics during training for speed and to select best model
-    rouge_metrics = metrics_calc.compute_rouge(decoded_preds, decoded_labels)
+    lang = config.get('language', 'en')
+    rouge_metrics = metrics_calc.compute_rouge(decoded_preds, decoded_labels, lang=lang)
     
     # We only return rouge-l as the main metric for the trainer to monitor
     # but include others for logging if needed.
@@ -73,7 +74,12 @@ def train(config_path: str, mode_override: str = None, dataset_percent: int = 10
         )
     else:
         dataset_path = Path(config.data_dir) / 'ukrainian_qa.jsonl'
-        raw_dataset = dataset_loader.load_ukrainian_dataset(dataset_path)
+        agnostic = config.get('mode') == 'answer_agnostic'
+        raw_dataset = dataset_loader.load_ukrainian_dataset(
+            dataset_path,
+            filter_unanswerable=agnostic,
+            deduplicate_by_context=agnostic
+        )
         dataset = dataset_loader.stratified_split(
             raw_dataset, config['data']['train_split'],
             config['data']['val_split'], config.get('seed', 42)

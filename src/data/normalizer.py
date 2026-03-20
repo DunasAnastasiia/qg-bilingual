@@ -5,6 +5,9 @@ class TextNormalizer:
         self.language = language
 
     def normalize(self, text: str) -> str:
+        if text is None:
+            return ""
+        text = str(text)
         text = re.sub(r'[""‟„]', '"', text)
         text = re.sub(r"[''‛‚]", "'", text)
         text = re.sub(r'[\u2018\u2019]', "'", text)

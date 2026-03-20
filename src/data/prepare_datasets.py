@@ -224,45 +224,68 @@ def prepare_ukrainian_dataset(output_path=None, demo_mode=False, demo_size=1000)
     output_path = Path(output_path)
     output_path.parent.mkdir(exist_ok=True, parents=True)
 
-    mode_str = "DEMO" if demo_mode else "PRODUCTION"
-    logger.info(f"Preparing Ukrainian Q&A dataset ({mode_str})...")
+    try:
+        # Load from Hugging Face with no checks to avoid NonMatchingSplitsSizesError
+        dataset = load_dataset('nogyxo/question-answering-ukrainian', verification_mode="no_checks")
 
-    # Get base examples
-    examples = get_ukrainian_examples()
+        if demo_mode:
+            logger.info(f"Demo mode: limiting to {demo_size} examples per split")
+            random.seed(42)
+            dataset['train'] = dataset['train'].shuffle(seed=42).select(range(min(demo_size, len(dataset['train']))))
+            dataset['test'] = dataset['test'].shuffle(seed=42).select(range(min(demo_size // 5, len(dataset['test']))))
 
-    if demo_mode:
-        # In demo mode, limit to first few examples
-        examples = examples[:min(20, len(examples))]
-    else:
-        # In production mode, duplicate and augment the examples
-        # This simulates a larger dataset while maintaining quality
-        augmented = []
-        for ex in examples:
-            augmented.append(ex)
-            # You can add more variations here in production
-        examples = augmented * 10  # Multiply to create larger dataset
-        random.seed(42)
-        random.shuffle(examples)
-        examples = examples[:demo_size * 5]  # Limit to reasonable size
+        logger.info(f"✓ Ukrainian QA dataset downloaded successfully")
+        logger.info(f"  - Train examples: {len(dataset['train'])}")
+        logger.info(f"  - Test examples: {len(dataset['test'])}")
 
-    # Add is_impossible flag
-    for ex in examples:
-        ex['is_impossible'] = False
+        # Save to local cache as ukrainian_qa.jsonl (merging train and test for later splitting)
+        with open(output_path, 'w', encoding='utf-8') as f:
+            # First, add manual examples for better variety/quality on common topics
+            manual_examples = get_ukrainian_examples()
+            for ex in manual_examples:
+                record = {
+                    'context': ex['context'],
+                    'question': ex['question'],
+                    'answer': ex['answer'],
+                    'all_answers': [ex['answer']],
+                    'answer_start': -1, # Will be found by normalizer
+                    'is_impossible': False
+                }
+                f.write(json.dumps(record, ensure_ascii=False) + '\n')
 
-    with open(output_path, 'w', encoding='utf-8') as f:
-        for ex in examples:
-            f.write(json.dumps(ex, ensure_ascii=False) + '\n')
+            # Then, add examples from the professional dataset
+            for split in ['train', 'test']:
+                for example in tqdm(dataset[split], desc=f"Saving Ukrainian {split}"):
+                    # nogyxo/question-answering-ukrainian columns: context, question, is_impossible, answer_start, answer_text
+                    record = {
+                        'context': example['context'],
+                        'question': example['question'],
+                        'answer': example['answer_text'] if example['answer_text'] else '',
+                        'all_answers': [example['answer_text']] if example['answer_text'] else [],
+                        'answer_start': example['answer_start'],
+                        'is_impossible': example['is_impossible']
+                    }
+                    f.write(json.dumps(record, ensure_ascii=False) + '\n')
 
-    logger.info(f"✓ Created Ukrainian dataset with {len(examples)} examples")
-    logger.info(f"  - Saved to {output_path}")
-
-    if demo_mode:
-        logger.info(f"  - Mode: DEMO (limited examples)")
-    else:
-        logger.info(f"  - Mode: PRODUCTION")
-        logger.warning("  ⚠ For real production, add more diverse Ukrainian Q&A examples")
-
-    return True
+        logger.info(f"  - Saved all examples to {output_path}")
+        return True
+    except Exception as e:
+        logger.error(f"✗ Failed to prepare Ukrainian dataset: {e}")
+        # Fallback to manual examples if HF fails
+        logger.info("Falling back to manual examples only...")
+        manual_examples = get_ukrainian_examples()
+        with open(output_path, 'w', encoding='utf-8') as f:
+            for ex in manual_examples:
+                record = {
+                    'context': ex['context'],
+                    'question': ex['question'],
+                    'answer': ex['answer'],
+                    'all_answers': [ex['answer']],
+                    'answer_start': -1,
+                    'is_impossible': False
+                }
+                f.write(json.dumps(record, ensure_ascii=False) + '\n')
+        return True
 
 
 def verify_datasets():

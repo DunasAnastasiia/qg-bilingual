@@ -60,7 +60,7 @@ class MetricsCalculator:
                 norm_refs.append([str(refs)])
         return norm_refs
 
-    def compute_rouge(self, predictions: List[str], references: Any) -> Dict:
+    def compute_rouge(self, predictions: List[str], references: Any, lang: str = 'en') -> Dict:
         try:
             if not predictions:
                 return {'rouge-1': 0.0, 'rouge-2': 0.0, 'rouge-l': 0.0}
@@ -70,7 +70,54 @@ class MetricsCalculator:
             
             # evaluate('rouge') supports multi-reference natively (List[List[str]])
             # and takes the max score per prediction.
-            res = self.rouge.compute(predictions=predictions, references=norm_refs, use_stemmer=True)
+            # Use a custom tokenizer that supports Unicode (Cyrillic) word characters
+            # to avoid the default English-centric tokenizer that strips non-ASCII.
+            import re
+            
+            def stem_ukrainian(word):
+                """Покращений стеммер для української мови"""
+                if len(word) <= 3:
+                    return word
+                
+                # 1. Спроба видалити довгі закінчення
+                new_word = re.sub(r'(ами|ями|иму|ими|ому|ові|еві|ого|ої|ій|ий|ям|ам|ах|ях|ів|ей|ою|ею|ий|их|іх)$', '', word)
+                if len(new_word) < 3:
+                    word = word
+                else:
+                    word = new_word
+                    
+                # 2. Спроба видалити короткі закінчення
+                new_word = re.sub(r'(а|я|о|е|и|і|у|ю)$', '', word)
+                if len(new_word) < 3:
+                    word = word
+                else:
+                    word = new_word
+                    
+                # 3. Дієслівні закінчення (тільки якщо слово ще достатньо довге)
+                if len(word) > 4:
+                    word = re.sub(r'(ться|лись|всь|ти|ла|ло|ли|в|ш|те|мо)$', '', word)
+                    
+                return word
+
+            def unicode_tokenizer(text):
+                # Standardize and tokenize while keeping Unicode characters
+                # \w in Python 3 matches Unicode characters including Cyrillic
+                tokens = re.findall(r'\w+', text.lower(), re.UNICODE)
+                if lang == 'ua':
+                    return [stem_ukrainian(t) for t in tokens]
+                return tokens
+                
+            # Use custom tokenizer for non-English languages to preserve Unicode characters
+            tokenizer_arg = unicode_tokenizer if lang != 'en' else None
+            # If we use our own stemmer for UA, don't use default stemmer (which is English-only)
+            use_stemmer = (lang == 'en')
+            
+            res = self.rouge.compute(
+                predictions=predictions, 
+                references=norm_refs, 
+                use_stemmer=use_stemmer,
+                tokenizer=tokenizer_arg
+            )
             
             return {
                 'rouge-1': res['rouge1'],
@@ -212,7 +259,7 @@ class MetricsCalculator:
         if config is None:
             config = {'qa_f1_threshold': 0.8, 'qa_conf_threshold': 0.35}
         metrics = {}
-        metrics.update(self.compute_rouge(predictions, references))
+        metrics.update(self.compute_rouge(predictions, references, lang))
         metrics['bleu'] = self.compute_bleu(predictions, references)
         metrics.update(self.compute_bertscore(predictions, references, lang))
         qa_metrics = self.compute_qg_qa_metrics(predictions, contexts, gold_answers, qa_model, config['qa_f1_threshold'], config['qa_conf_threshold'])

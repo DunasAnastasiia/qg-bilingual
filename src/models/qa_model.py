@@ -4,7 +4,7 @@ from transformers import AutoTokenizer, AutoModelForQuestionAnswering
 from typing import Dict, Tuple
 
 class QAModel:
-    def __init__(self, model_name: str = 'deepset/roberta-base-squad2', device: str = 'cuda'):
+    def __init__(self, model_name: str = 'deepset/xlm-roberta-large-squad2', device: str = 'cuda'):
         self.device = device
 
         print(f"QA Model using device: {self.device}")
@@ -15,20 +15,43 @@ class QAModel:
         self.model.eval()
 
     def answer_question(self, question: str, context: str) -> Dict:
-        inputs = self.tokenizer(question, context, max_length=512, truncation=True, return_tensors='pt')
+        return self.answer_question_batch([question], [context])[0]
+
+    def answer_question_batch(self, questions: list[str], contexts: list[str]) -> list[Dict]:
+        if not questions:
+            return []
+        
+        # Ensure contexts is same length as questions
+        if len(contexts) == 1 and len(questions) > 1:
+            contexts = contexts * len(questions)
+            
+        inputs = self.tokenizer(questions, contexts, max_length=512, truncation=True, padding=True, return_tensors='pt')
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
+        
         with torch.no_grad():
             outputs = self.model(**inputs)
-        answer_start = torch.argmax(outputs.start_logits)
-        answer_end = torch.argmax(outputs.end_logits)
-        start_score = outputs.start_logits[0, answer_start].item()
-        end_score = outputs.end_logits[0, answer_end].item()
-        confidence = (start_score + end_score) / 2
-        if answer_end < answer_start:
-            return {'answer': '', 'confidence': 0.0, 'start': -1, 'end': -1}
-        answer_tokens = inputs['input_ids'][0][answer_start:answer_end + 1]
-        answer = self.tokenizer.decode(answer_tokens, skip_special_tokens=True)
-        return {'answer': answer, 'confidence': confidence, 'start': answer_start.item(), 'end': answer_end.item()}
+            
+        results = []
+        for i in range(len(questions)):
+            answer_start = torch.argmax(outputs.start_logits[i])
+            answer_end = torch.argmax(outputs.end_logits[i])
+            start_score = outputs.start_logits[i, answer_start].item()
+            end_score = outputs.end_logits[i, answer_end].item()
+            confidence = (start_score + end_score) / 2
+            
+            if answer_end < answer_start:
+                results.append({'answer': '', 'confidence': 0.0, 'start': -1, 'end': -1})
+                continue
+                
+            answer_tokens = inputs['input_ids'][i][answer_start:answer_end + 1]
+            answer = self.tokenizer.decode(answer_tokens, skip_special_tokens=True)
+            results.append({
+                'answer': answer, 
+                'confidence': confidence, 
+                'start': answer_start.item(), 
+                'end': answer_end.item()
+            })
+        return results
 
     def compute_em_f1(self, predicted: str, gold: str) -> Tuple[float, float]:
         pred_tokens = self._normalize_answer(predicted).split()
@@ -57,7 +80,10 @@ class QAModel:
 
     def _normalize_answer(self, text: str) -> str:
         text = text.lower()
+        # Remove English articles
         text = re.sub(r'\b(a|an|the)\b', ' ', text)
+        # Remove punctuation, but keep alphanumeric characters from various scripts
+        # \w in Python 3 matches Unicode characters including Cyrillic
         text = re.sub(r'[^\w\s]', '', text)
         text = re.sub(r'\s+', ' ', text)
         return text.strip()

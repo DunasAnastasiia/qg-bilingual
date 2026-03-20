@@ -26,5 +26,5 @@ mode: answer_agnostic
 model_name: t5-base
 tokenizer_name: t5-base
 training:
-  num_epochs: 5
+  num_epochs: 3
   output_dir: ./checkpoints/t5_base_en_agnostic

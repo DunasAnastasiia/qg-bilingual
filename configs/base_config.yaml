@@ -1,51 +1,45 @@
-seed: 42
-device: cuda
-
 data:
-  train_split: 0.8
-  val_split: 0.1
-  test_split: 0.1
+  max_answer_len: 15
   max_context_len: 512
   max_question_len: 48
-  max_answer_len: 15
+  min_answer_len: 1
   min_context_len: 20
   min_question_len: 3
-  min_answer_len: 1
-
-training:
-  batch_size: 16  # Increased from 8 (4x more samples per batch)
-  gradient_accumulation_steps: 2  # Reduced from 8 (still effective batch = 32*2 = 64)
-  learning_rate: 5.0e-5
-  warmup_ratio: 0.03
-  num_epochs: 5
-  weight_decay: 0.01
-  max_grad_norm: 1.0
-  fp16: true  # Use mixed precision for faster training
-  bf16: false  # Change to true if using Ampere/newer GPU (A100, RTX 30/40)
-  # Note: bf16 can be slower on older GPUs. fp16 is generally safe.
-  label_smoothing: 0.05
-  early_stopping_patience: 3
-  save_total_limit: 3
-  # Performance optimizations
-  dataloader_num_workers: 4  # Parallel data loading
-  dataloader_pin_memory: true  # Faster GPU transfer
-  gradient_checkpointing: true  # Trade memory for speed (you have plenty of RAM)
-  generation_num_beams: 1  # Fast evaluation during training (greedy)
-
+  test_split: 0.1
+  train_split: 0.8
+  val_split: 0.1
+device: cuda
+evaluation:
+  metrics:
+  - rouge
+  - bleu
+  qa_conf_threshold: 0.35
+  qa_f1_threshold: 0.8
 generation:
-  num_beams: 6
-  length_penalty: 1.1
-  no_repeat_ngram_size: 3
-  repetition_penalty: 1.1
-  min_new_tokens: 5
-  max_new_tokens: 50
   do_sample: false
+  length_penalty: 1.1
+  max_new_tokens: 50
+  min_new_tokens: 5
+  no_repeat_ngram_size: 3
+  num_beams: 6
+  repetition_penalty: 1.1
   temperature: 1.0
   top_p: 0.9
-
-evaluation:
-  qa_f1_threshold: 0.8
-  qa_conf_threshold: 0.35
-  metrics:
-    - rouge
-    - bleu
+seed: 42
+training:
+  batch_size: 32
+  bf16: true
+  dataloader_num_workers: 4
+  dataloader_pin_memory: true
+  early_stopping_patience: 3
+  fp16: false
+  generation_num_beams: 1
+  gradient_accumulation_steps: 1
+  gradient_checkpointing: true
+  label_smoothing: 0.05
+  learning_rate: 1.5e-04
+  max_grad_norm: 1.0
+  num_epochs: 10
+  save_total_limit: 3
+  warmup_ratio: 0.1
+  weight_decay: 0.01

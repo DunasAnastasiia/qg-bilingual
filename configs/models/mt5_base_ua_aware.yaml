@@ -1,21 +1,23 @@
-model_name: google/mt5-base
-language: ua
-mode: answer_aware
-tokenizer_name: google/mt5-base
-
 base_config: ../base_config.yaml
-
 dataset:
-  name: ukrainian_qa
   language: ua
-  unanswerable_ratio: 0.40
-
-training:
-  num_epochs: 8
-  output_dir: ./checkpoints/mt5_base_ua_aware
-
+  name: ukrainian_qa
+  unanswerable_ratio: 0.4
+generation:
+  do_sample: false
+  length_penalty: 1.1
+  no_repeat_ngram_size: 3
+  num_beams: 10
+  num_return_sequences: 10
+language: ua
 lora:
   enabled: true
-  r: 32
   lora_alpha: 64
   lora_dropout: 0.1
+  r: 32
+mode: answer_aware
+model_name: google/mt5-base
+tokenizer_name: google/mt5-base
+training:
+  num_epochs: 10
+  output_dir: ./checkpoints/mt5_base_ua_aware

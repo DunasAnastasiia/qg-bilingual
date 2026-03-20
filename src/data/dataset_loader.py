@@ -45,9 +45,15 @@ class DatasetLoader:
                 indices_to_keep.append(idx)
         return dataset.select(indices_to_keep)
 
-    def _process_squad_example(self, example: Dict) -> Dict:
+    def _process_squad_example(self, example: Dict) -> Optional[Dict]:
+        if not example.get('context') or not example.get('question'):
+            return None
+            
         context = self.normalizer.normalize(example['context'])
         question = self.normalizer.normalize(example['question'])
+        
+        if not context or not question:
+            return None
         
         # Store all available answers for robust evaluation
         all_answers = [self.normalizer.normalize(a) for a in example['answers']['text']]
@@ -72,29 +78,69 @@ class DatasetLoader:
             'lang': 'en'
         }
 
-    def load_ukrainian_dataset(self, file_path: Path) -> Dataset:
+    def load_ukrainian_dataset(self, file_path: Path, filter_unanswerable: bool = False, deduplicate_by_context: bool = False) -> Dataset:
         examples = []
         with open(file_path, 'r', encoding='utf-8') as f:
             for line in f:
                 data = json.loads(line)
                 example = self._process_ukrainian_example(data)
                 if example:
+                    if filter_unanswerable and example['unanswerable']:
+                        continue
                     examples.append(example)
-        return Dataset.from_list(examples)
+        
+        dataset = Dataset.from_list(examples)
+        
+        if deduplicate_by_context:
+            dataset = self.remove_context_duplicates(dataset)
+            
+        return dataset
 
     def _process_ukrainian_example(self, data: Dict) -> Optional[Dict]:
+        if not data.get('context') or not data.get('question'):
+            return None
+            
         context = self.normalizer.normalize(data['context'])
         question = self.normalizer.normalize(data['question'])
-        answer = self.normalizer.normalize(data.get('answer', ''))
-        if not answer or not self.normalizer.verify_answer_span(context, answer):
-            if 'gold_answer' in data:
-                answer = self.normalizer.normalize(data['gold_answer'])
-                if not self.normalizer.verify_answer_span(context, answer):
+        
+        if not context or not question:
+            return None
+        
+        # Support both 'answer' and 'answer_text' keys
+        ans_text = data.get('answer') or data.get('answer_text') or ''
+        answer = self.normalizer.normalize(ans_text)
+        
+        # Handle multiple answers if available
+        all_answers = data.get('all_answers', [])
+        if not all_answers and answer:
+            all_answers = [answer]
+        all_answers = [self.normalizer.normalize(a) for a in all_answers if a]
+        
+        is_impossible = data.get('is_impossible', False) or data.get('unanswerable', False)
+        
+        if not is_impossible:
+            if not answer or not self.normalizer.verify_answer_span(context, answer):
+                if 'gold_answer' in data:
+                    answer = self.normalizer.normalize(data['gold_answer'])
+                    if not self.normalizer.verify_answer_span(context, answer):
+                        return None
+                else:
                     return None
-            else:
-                return None
-        answer_start, answer_end = self.normalizer.find_answer_span(context, answer)
-        return {'context': context, 'question': question, 'answer': answer, 'answer_start': answer_start, 'unanswerable': data.get('unanswerable', False), 'lang': 'ua'}
+            answer_start, _ = self.normalizer.find_answer_span(context, answer)
+        else:
+            answer = ''
+            answer_start = -1
+            all_answers = ['']
+            
+        return {
+            'context': context, 
+            'question': question, 
+            'answer': answer, 
+            'all_answers': all_answers,
+            'answer_start': answer_start, 
+            'unanswerable': is_impossible, 
+            'lang': 'ua'
+        }
 
     def filter_by_length(self, dataset: Dataset, config: dict) -> Dataset:
         def length_filter(example):
